@@ -14,6 +14,8 @@ dependencies = [
   "nibabel>=5.2",
   "numpy>=1.26",
   "pydicom>=3.0",
+  "pylibjpeg>=2.0",
+  "pylibjpeg-libjpeg>=2.1",
   "scipy>=1.12",
 ]
 

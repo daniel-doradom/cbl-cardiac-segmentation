@@ -33,6 +33,10 @@ geometric consistency uses a documented numerical tolerance rather than exact
 string equality. Slice-position increments were approximately regular rather
 than textually identical.
 
+The representative Weasis MR pixel data use JPEG Lossless, Non-Hierarchical,
+First-Order Prediction (Process 14 [Selection Value 1]); pydicom therefore needs
+the declared `pylibjpeg` and `pylibjpeg-libjpeg` plugins for preparation.
+
 A broader raw MRI export contained 12 series spanning localizers, 2D MDE,
 functional short-axis cine, and real-time views. Relevant temporal tags varied
 by series and some were missing. This supports the small conservative temporal

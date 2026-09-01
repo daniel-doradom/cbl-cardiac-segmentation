@@ -46,7 +46,12 @@ def _load_pixels(path: str) -> np.ndarray:
     try:
         pixels = dataset.pixel_array.astype(np.float32)
     except Exception as exc:
-        raise SeriesSelectionError(f"unable to decode DICOM pixel data: {Path(path).name}") from exc
+        transfer_syntax = getattr(getattr(dataset, "file_meta", None), "TransferSyntaxUID", None)
+        raise SeriesSelectionError(
+            "unable to decode DICOM pixel data "
+            f"(transfer syntax {transfer_syntax or 'unknown'}). Install the declared pixel-decoder "
+            f"dependencies; decoder detail: {exc}"
+        ) from exc
     slope = float(getattr(dataset, "RescaleSlope", 1.0) or 1.0)
     intercept = float(getattr(dataset, "RescaleIntercept", 0.0) or 0.0)
     return pixels * slope + intercept

@@ -55,6 +55,9 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 ```
 
+The base dependencies include `pylibjpeg`/`pylibjpeg-libjpeg` because the
+representative local exports use JPEG Lossless Process 14 pixel encoding.
+
 For CT inference, install the pinned optional backend in that isolated environment:
 
 ```bash

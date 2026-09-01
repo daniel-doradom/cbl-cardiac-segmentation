@@ -1,0 +1,4 @@
+This experimental repository contains research software and is not a medical
+device. No permission is granted here for use of patient data beyond the
+authorizations that govern the source dataset. External segmentation backends,
+models, weights, and datasets retain their own licenses.

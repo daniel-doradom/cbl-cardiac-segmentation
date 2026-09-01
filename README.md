@@ -103,6 +103,9 @@ Run CT segmentation and QC:
 
 ```bash
 python -m vtseg segment-ct results/local-case --device gpu
+
+# For a very large CT with constrained system memory:
+python -m vtseg segment-ct results/local-case --device gpu --force-split
 ```
 
 Re-run mask QC after a controlled mask update:

@@ -37,6 +37,7 @@ nnUNet_results/
 
 # Python/build/editor state
 .venv/
+.venv-*/
 venv/
 env/
 __pycache__/

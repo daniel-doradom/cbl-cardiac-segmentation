@@ -88,6 +88,7 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
         *,
         device: str = "gpu",
         higher_order_resampling: bool = False,
+        force_split: bool = False,
         repo_root: Path | None = None,
     ) -> dict[str, Any]:
         case_dir = case_dir.resolve()
@@ -132,6 +133,8 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
         ]
         if higher_order_resampling:
             command.append("--higher_order_resampling")
+        if force_split:
+            command.append("--force_split")
 
         result = subprocess.run(command, capture_output=True, text=True)
         (raw_dir / "execution.log").write_text(
@@ -178,7 +181,10 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             segmentation_backend="TotalSegmentator",
             backend_version=status.version,
             model_task=TASK,
-            model_options={"higher_order_resampling": higher_order_resampling},
+            model_options={
+                "higher_order_resampling": higher_order_resampling,
+                "force_split": force_split,
+            },
             device=device,
             output_files=[
                 str(Path(path).relative_to(case_dir)) for path in outputs.values()

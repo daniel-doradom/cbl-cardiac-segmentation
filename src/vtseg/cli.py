@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     segment_parser.add_argument("case_directory", type=Path)
     segment_parser.add_argument("--device", default="gpu", choices=("gpu", "cpu", "mps"))
     segment_parser.add_argument("--higher-order-resampling", action="store_true")
+    segment_parser.add_argument(
+        "--force-split",
+        action="store_true",
+        help="split a large volume into parts to reduce TotalSegmentator memory use",
+    )
 
     qc_parser = sub.add_parser("qc-masks", help="recompute QC for normalized masks")
     qc_parser.add_argument("case_directory", type=Path)
@@ -111,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.case_directory,
                 device=args.device,
                 higher_order_resampling=args.higher_order_resampling,
+                force_split=args.force_split,
                 repo_root=_repo_root(),
             )
             print(

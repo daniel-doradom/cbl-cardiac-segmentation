@@ -26,10 +26,22 @@ weights are installed/configured outside application runtime.
 python -m vtseg segment-ct results/local-case --device gpu
 ```
 
+For a large volume that exhausts system memory, use the upstream
+split-processing mode:
+
+```bash
+python -m vtseg segment-ct results/local-case --device gpu --force-split
+```
+
+This processes the volume in parts and records `force_split: true` in
+segmentation provenance. It may take longer and should not be used for a small
+field of view.
+
 The adapter invokes the supported CLI with `-ta heartchambers_highres`, requests
 an upstream JSON run report, preserves raw masks/logs, verifies required class
 files and exact source geometry, copies them to canonical names, runs QC, and
-writes provenance. `--higher-order-resampling` is opt-in and recorded.
+writes provenance. `--higher-order-resampling` and `--force-split` are opt-in
+and recorded.
 
 No fallback task exists. A missing CLI, absent task, license failure, unavailable
 weights, or inference error leaves a machine-readable failed/blocked status.

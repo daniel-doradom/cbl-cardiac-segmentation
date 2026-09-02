@@ -10,6 +10,10 @@ selection, full-volume DICOM-to-NIfTI preparation, modality routing, a CT
 TotalSegmentator adapter, an experimental cine-CMR biv-me adapter, canonical
 masks, automated mask QC, provenance, and 3D Slicer-ready files.
 
+For the complete repeatable operator procedure, including authorized data
+placement, server inference, Slicer review, MATLAB correction/meshing, and
+result synchronization, use [the Manual Review and Mesh Runbook](docs/manual-workflow.md).
+
 ## Canonical mask interface
 
 Every configured automatic backend must produce these downstream names:

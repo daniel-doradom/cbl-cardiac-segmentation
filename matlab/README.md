@@ -14,6 +14,10 @@ ignored `results/<case>/manual/matlab/` case directory.
 ## Run
 
 ```matlab
+clear classes
+clear functions
+rehash
+
 repoRoot = '/path/to/vt-segmentation-eval';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh');
@@ -28,3 +32,7 @@ representative slice; that ROI is reused for the slider, mask-fill toggle, and
 opacity control, correction window, and final overview figures without changing
 the source DICOMs or masks. MATLAB corrections are authoritative for mesh
 generation.
+
+For the full server-to-Slicer-to-MATLAB procedure, source-slice selection
+semantics, synchronization commands, corrected-mask import, and recovery from
+late-stage mesh export errors, see [the manual workflow runbook](../docs/manual-workflow.md).

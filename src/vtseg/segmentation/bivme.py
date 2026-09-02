@@ -56,6 +56,13 @@ def _subprocess_environment(root: Path, *, device: str | None = None) -> dict[st
     return environment
 
 
+def _selected_study_instances(inventory: Any, study_uid: str) -> list[Any]:
+    instances = [instance for instance in inventory.instances if instance.study_uid == study_uid]
+    if not instances:
+        raise SeriesSelectionError("prepared cine study is absent from the biv-me DICOM input")
+    return instances
+
+
 def _version_from_config(root: Path) -> str | None:
     config_path = root / "src" / "bivme" / "configs" / "config.toml"
     if not config_path.is_file():
@@ -377,12 +384,16 @@ class BivMeMRIBackend(SegmentationBackend):
 
         dicom_root = dicom_directory.expanduser().resolve()
         inventory = scan_headers(dicom_root)
-        modalities = {str(record.dataset.Modality) for record in inventory.instances}
+        selected_study_uid = str(summary.get("study_uid") or "")
+        if not selected_study_uid:
+            raise SeriesSelectionError("prepared cine metadata lacks a StudyInstanceUID")
+        study_instances = _selected_study_instances(inventory, selected_study_uid)
+        modalities = {str(record.dataset.Modality) for record in study_instances}
         if modalities != {"MR"}:
-            raise SeriesSelectionError("biv-me input must contain only MR DICOM instances")
+            raise SeriesSelectionError("the prepared cine study must contain only MR DICOM instances")
         orientations = {
             tuple(round(float(value), 5) for value in record.dataset.ImageOrientationPatient)
-            for record in inventory.instances
+            for record in study_instances
             if hasattr(record.dataset, "ImageOrientationPatient")
         }
         view_selection = "image-only" if len(orientations) == 1 else "default"
@@ -393,7 +404,12 @@ class BivMeMRIBackend(SegmentationBackend):
             temporary_root = Path(temporary)
             input_root = temporary_root / "input"
             input_root.mkdir()
-            (input_root / CASE_ALIAS).symlink_to(dicom_root, target_is_directory=True)
+            study_input = input_root / CASE_ALIAS
+            study_input.mkdir()
+            for index, record in enumerate(study_instances, start=1):
+                source = Path(record.path)
+                suffix = source.suffix or ".dcm"
+                (study_input / f"{index:06d}{suffix}").symlink_to(source)
             config_path = temporary_root / "config.toml"
             config_path.write_text(
                 build_config(

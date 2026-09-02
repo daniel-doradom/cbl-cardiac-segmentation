@@ -112,7 +112,9 @@ When an input directory contains more than one cardiac-MR study, do not mix a
 cine series from one study with an LGE series from another. Choose the cine
 short-axis and native LGE/MDE series from the same study group. Passing
 `--lge-series` makes that choice reproducible rather than relying on automatic
-selection among competing LGE stacks.
+selection among competing LGE stacks. The biv-me adapter stages only instances
+from the prepared cine study before view selection, so unrelated studies in the
+same Diagnostics directory cannot be mixed into fitting.
 
 The paths to review in Slicer are:
 

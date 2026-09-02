@@ -1,12 +1,13 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import nibabel as nib
 import numpy as np
 import pytest
 
 from vtseg.errors import SeriesSelectionError
-from vtseg.segmentation.bivme import BivMeMRIBackend, build_config
+from vtseg.segmentation.bivme import BivMeMRIBackend, _selected_study_instances, build_config
 from vtseg.segmentation.bivme_runner import remove_ambiguous_loc_filter
 from vtseg.segmentation.bivme_rasterize import canonical_masks, rasterize
 
@@ -41,6 +42,15 @@ def test_bivme_config_supports_image_only_view_selection(tmp_path):
         view_selection="image-only",
     )
     assert 'option = "image-only"' in config
+
+
+def test_bivme_stages_only_the_prepared_study_instances():
+    first = SimpleNamespace(study_uid="prepared-study")
+    second = SimpleNamespace(study_uid="other-study")
+    inventory = SimpleNamespace(instances=[first, second])
+    assert _selected_study_instances(inventory, "prepared-study") == [first]
+    with pytest.raises(SeriesSelectionError, match="prepared cine study"):
+        _selected_study_instances(inventory, "missing-study")
 
 
 def test_bivme_runner_removes_only_ambiguous_loc_filter():

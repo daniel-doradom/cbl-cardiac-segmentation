@@ -45,6 +45,7 @@ for index = 2:slice_count
 end
 
 [row_range, column_range] = select_display_crop(images, masks, colors, gs_range);
+write_display_crop(seg_path, row_range, column_range, size(images));
 
 fig = figure('Name', 'biv-me LGE mask review', 'NumberTitle', 'off', ...
     'Color', 'w', 'Units', 'normalized', 'Position', [0.12 0.12 0.76 0.76], ...
@@ -181,6 +182,24 @@ end
 if isvalid(selection_figure)
     close(selection_figure);
 end
+end
+
+function write_display_crop(seg_path, row_range, column_range, image_size)
+crop = struct( ...
+    'schema_version', 1, ...
+    'row_start', row_range(1), ...
+    'row_end', row_range(end), ...
+    'column_start', column_range(1), ...
+    'column_end', column_range(end), ...
+    'image_height', image_size(1), ...
+    'image_width', image_size(2));
+fid = fopen(fullfile(seg_path, 'review_display_crop.json'), 'w');
+if fid < 0
+    warning('vtseg:DisplayCropNotSaved', 'Unable to save the display crop for downstream review plots.');
+    return;
+end
+cleanup = onCleanup(@() fclose(fid));
+fprintf(fid, '%s\n', jsonencode(crop));
 end
 
 function metadata = load_slice_metadata(seg_path, files, slice_count)

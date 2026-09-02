@@ -273,14 +273,15 @@ if last_segmented_slice > numel(folder)
 end
 
 if last_segmented_slice > 0
+    display_crop = load_display_crop(path_out, size(Epi, 1), size(Epi, 2));
     if lower(lstr) == 'y'
         [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( ...
             path_image, folder, last_segmented_slice, gs_range, ...
-            Lendo, Rendo, Epi, lepi, true);
+            Lendo, Rendo, Epi, lepi, true, display_crop);
     else
         [Lendo, Rendo, Epi, ~, save_confirmed] = review_and_correct_masks( ...
             path_image, folder, last_segmented_slice, gs_range, ...
-            Lendo, Rendo, Epi, [], false);
+            Lendo, Rendo, Epi, [], false, display_crop);
     end
 else
     fprintf('No completed segmentations to save.\n');
@@ -306,7 +307,7 @@ save(fullfile(path_out, 'myocardium.mat'), 'myocardium');
 
 plot_final_segmentation_overview( ...
     path_image, folder, last_segmented_slice, gs_range, ...
-    Lendo, Rendo, Epi, path_out);
+    Lendo, Rendo, Epi, path_out, display_crop);
 
 end
 
@@ -329,7 +330,7 @@ end
 
 function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( ...
         path_image, folder, last_segmented_slice, gs_range, ...
-        Lendo, Rendo, Epi, lepi, has_lepi)
+        Lendo, Rendo, Epi, lepi, has_lepi, display_crop)
 
     save_confirmed = false;
 
@@ -345,9 +346,9 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             return;
         end
 
-        [Im, h_img] = show_slice_with_masks( ...
+        [display_image, h_img] = show_slice_with_masks( ...
             ax, path_image, folder(k).name, gs_range, k, ...
-            Lendo, Rendo, Epi, lepi, has_lepi);
+            Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
 
         prompt = sprintf( ...
             'Slice %d/%d correction? [y/n/back(b)/quit/#] >> ', ...
@@ -390,11 +391,11 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             end
 
             [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
-                ax, h_img, Im, k, Lendo, Rendo, Epi, lepi, has_lepi);
+                ax, h_img, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
 
             show_slice_with_masks( ...
                 ax, path_image, folder(k).name, gs_range, k, ...
-                Lendo, Rendo, Epi, lepi, has_lepi);
+                Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
             keep_str = input('Keep these corrections? [y/n] >> ', 's');
 
             if isempty(keep_str) || strcmpi(keep_str, 'y')
@@ -415,31 +416,31 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
 end
 
 function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
-        ax, h_img, Im, k, Lendo, Rendo, Epi, lepi, has_lepi)
+        ax, h_img, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop)
 
     prompt = 'Redraw LV endocardium? [y/n/clear] >> ';
-    [new_mask, did_update] = redraw_one_mask(ax, h_img, Im, prompt, 'r');
+    [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'r');
     if did_update
-        Lendo(:, :, k) = new_mask;
+        Lendo(:, :, k) = replace_crop_mask(Lendo(:, :, k), new_mask, display_crop);
     end
 
     prompt = 'Redraw RV endocardium? [y/n/clear] >> ';
-    [new_mask, did_update] = redraw_one_mask(ax, h_img, Im, prompt, 'c');
+    [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'c');
     if did_update
-        Rendo(:, :, k) = new_mask;
+        Rendo(:, :, k) = replace_crop_mask(Rendo(:, :, k), new_mask, display_crop);
     end
 
     prompt = 'Redraw epicardium? [y/n/clear] >> ';
-    [new_mask, did_update] = redraw_one_mask(ax, h_img, Im, prompt, 'g');
+    [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'g');
     if did_update
-        Epi(:, :, k) = new_mask;
+        Epi(:, :, k) = replace_crop_mask(Epi(:, :, k), new_mask, display_crop);
     end
 
     if has_lepi
         prompt = 'Redraw LV epicardium? [y/n/clear] >> ';
-        [new_mask, did_update] = redraw_one_mask(ax, h_img, Im, prompt, 'b');
+        [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'b');
         if did_update
-            lepi(:, :, k) = new_mask;
+            lepi(:, :, k) = replace_crop_mask(lepi(:, :, k), new_mask, display_crop);
         end
     end
 end
@@ -468,27 +469,57 @@ function [mask, did_update] = redraw_one_mask(ax, h_img, Im, prompt, color)
     end
 end
 
-function [Im, h_img] = show_slice_with_masks( ...
-        ax, path_image, file_name, gs_range, k, Lendo, Rendo, Epi, lepi, has_lepi)
+function [display_image, h_img] = show_slice_with_masks( ...
+        ax, path_image, file_name, gs_range, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop)
 
     f = strcat(path_image, file_name);
     f_info = dicominfo(f);
     Im = dicomread(f_info);
+    display_image = Im(display_crop.rows, display_crop.columns);
 
     cla(ax);
-    h_img = imshow(Im, gs_range, 'Parent', ax);
+    h_img = imshow(display_image, gs_range, 'Parent', ax);
     hold(ax, 'on');
 
-    plot_mask_contour(ax, Lendo(:, :, k), 'r');
-    plot_mask_contour(ax, Rendo(:, :, k), 'c');
-    plot_mask_contour(ax, Epi(:, :, k), 'g');
+    plot_mask_contour(ax, Lendo(display_crop.rows, display_crop.columns, k), 'r');
+    plot_mask_contour(ax, Rendo(display_crop.rows, display_crop.columns, k), 'c');
+    plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns, k), 'g');
 
     if has_lepi
-        plot_mask_contour(ax, lepi(:, :, k), 'b');
+        plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b');
     end
 
     title(ax, sprintf('Slice %d: %s', k, file_name), 'Interpreter', 'none');
     drawnow;
+end
+
+function display_crop = load_display_crop(path_out, image_height, image_width)
+display_crop = struct('rows', 1:image_height, 'columns', 1:image_width);
+crop_path = fullfile(path_out, 'review_display_crop.json');
+if ~isfile(crop_path)
+    return;
+end
+try
+    saved = jsondecode(fileread(crop_path));
+    if saved.image_height ~= image_height || saved.image_width ~= image_width
+        warning('vtseg:DisplayCropIgnored', 'Saved review crop does not match the current image dimensions.');
+        return;
+    end
+    if saved.row_start < 1 || saved.row_end > image_height || ...
+            saved.column_start < 1 || saved.column_end > image_width || ...
+            saved.row_start > saved.row_end || saved.column_start > saved.column_end
+        warning('vtseg:DisplayCropIgnored', 'Saved review crop is outside the current image bounds.');
+        return;
+    end
+    display_crop.rows = saved.row_start:saved.row_end;
+    display_crop.columns = saved.column_start:saved.column_end;
+catch
+    warning('vtseg:DisplayCropIgnored', 'Unable to read the saved review crop.');
+end
+end
+
+function full_mask = replace_crop_mask(full_mask, cropped_mask, display_crop)
+full_mask(display_crop.rows, display_crop.columns) = cropped_mask;
 end
 
 function plot_mask_contour(ax, mask, color)
@@ -500,42 +531,9 @@ function plot_mask_contour(ax, mask, color)
 end
 
 function plot_final_segmentation_overview( ...
-        path_image, folder, n_slices, gs_range, Lendo, Rendo, Epi, seg_path)
+        path_image, folder, n_slices, gs_range, Lendo, Rendo, Epi, seg_path, display_crop)
 
     slice_labels = load_export_slice_labels(seg_path, folder, n_slices);
-
-    crop_str = input('Crop final contour overview? [y/n] >> ', 's');
-    do_crop = strcmpi(crop_str, 'y');
-
-    ref_slice = round(n_slices / 2);
-    ref_img = read_slice_image(path_image, folder(ref_slice).name);
-
-    x1 = 1;
-    y1 = 1;
-    x2 = size(ref_img, 2);
-    y2 = size(ref_img, 1);
-
-    if do_crop
-        figure('Name', 'Define final overview crop');
-        imshow(ref_img, gs_range);
-        hold on;
-        plot_mask_contour(gca, Epi(:, :, ref_slice), 'g');
-        plot_mask_contour(gca, Lendo(:, :, ref_slice), 'r');
-        plot_mask_contour(gca, Rendo(:, :, ref_slice), 'c');
-        title(sprintf(['Draw crop box on Slice %d, ' ...
-            'then double-click inside it'], ref_slice));
-
-        h = drawrectangle('Color', 'y');
-        wait(h);
-
-        crop_pos = round(h.Position);
-        x1 = max(1, crop_pos(1));
-        y1 = max(1, crop_pos(2));
-        x2 = min(size(ref_img, 2), x1 + crop_pos(3) - 1);
-        y2 = min(size(ref_img, 1), y1 + crop_pos(4) - 1);
-
-        close;
-    end
 
     n_cols = ceil(sqrt(n_slices));
     n_rows = ceil(n_slices / n_cols);
@@ -549,12 +547,12 @@ function plot_final_segmentation_overview( ...
         Im = read_slice_image(path_image, folder(k).name);
 
         nexttile;
-        imshow(Im(y1:y2, x1:x2), gs_range);
+        imshow(Im(display_crop.rows, display_crop.columns), gs_range);
         hold on;
 
-        plot_mask_contour(gca, Epi(y1:y2, x1:x2, k), 'g');
-        plot_mask_contour(gca, Lendo(y1:y2, x1:x2, k), 'r');
-        plot_mask_contour(gca, Rendo(y1:y2, x1:x2, k), 'c');
+        plot_mask_contour(gca, Epi(display_crop.rows, display_crop.columns, k), 'g');
+        plot_mask_contour(gca, Lendo(display_crop.rows, display_crop.columns, k), 'r');
+        plot_mask_contour(gca, Rendo(display_crop.rows, display_crop.columns, k), 'c');
 
         title(slice_labels{k}, 'Interpreter', 'none', 'FontSize', 8);
     end
@@ -570,7 +568,7 @@ function plot_final_segmentation_overview( ...
         Im = read_slice_image(path_image, folder(k).name);
 
         nexttile;
-        imshow(Im(y1:y2, x1:x2), gs_range);
+        imshow(Im(display_crop.rows, display_crop.columns), gs_range);
         title(slice_labels{k}, 'Interpreter', 'none', 'FontSize', 8);
     end
 

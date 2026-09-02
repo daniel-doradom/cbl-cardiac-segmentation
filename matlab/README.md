@@ -25,5 +25,6 @@ vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);
 Use `vtseg.visualize_bivme_lge_masks(caseDirectory, [])` for the interactive
 slice/mask review. It first prompts for one rectangular display crop on a
 representative slice; that ROI is reused for the slider, mask-fill toggle, and
-opacity control without changing the source DICOMs or masks. MATLAB corrections
-are authoritative for mesh generation.
+opacity control, correction window, and final overview figures without changing
+the source DICOMs or masks. MATLAB corrections are authoritative for mesh
+generation.

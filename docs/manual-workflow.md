@@ -98,6 +98,16 @@ PYTHONPATH=src python -m vtseg align-bivme-lge "$case" \
 been installed into that conda environment. It may be omitted when `vtseg` is
 already installed in the active environment.
 
+The `prepare-series` success message has the form `Prepared MR volume with N
+spatial slices at .../volume/image.nii.gz`. That confirms the selected cine
+volume and `source/selected_series.json` were written and it is safe to start
+`segment-mri-bivme`. A `>` prompt after a line-continuation backslash is Bash
+asking for the next line of the same command; it is normal and is not an error. Biv-me can
+run without printing progress immediately. Do not interrupt it while the shell
+has not returned to its usual prompt. On successful return it prints
+`biv-me segmentation, rasterization, and QC complete`; only then run
+`align-bivme-lge`.
+
 When an input directory contains more than one cardiac-MR study, do not mix a
 cine series from one study with an LGE series from another. Choose the cine
 short-axis and native LGE/MDE series from the same study group. Passing

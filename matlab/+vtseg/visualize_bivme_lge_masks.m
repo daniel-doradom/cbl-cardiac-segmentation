@@ -44,6 +44,8 @@ for index = 2:slice_count
     images(:, :, index) = current_image;
 end
 
+[row_range, column_range] = select_display_crop(images, masks, colors, gs_range);
+
 fig = figure('Name', 'biv-me LGE mask review', 'NumberTitle', 'off', ...
     'Color', 'w', 'Units', 'normalized', 'Position', [0.12 0.12 0.76 0.76], ...
     'KeyPressFcn', @on_key);
@@ -95,15 +97,16 @@ refresh_view();
         slice = round(get(slice_slider, 'Value'));
         set(slice_slider, 'Value', slice);
         cla(ax);
-        imshow(images(:, :, slice), gs_range, 'Parent', ax);
+        image_slice = images(row_range, column_range, slice);
+        imshow(image_slice, gs_range, 'Parent', ax);
         colormap(ax, gray(256));
         hold(ax, 'on');
 
-        fill_image = zeros([size(images, 1), size(images, 2), 3]);
-        fill_mask = false(size(images, 1), size(images, 2));
+        fill_image = zeros([size(image_slice, 1), size(image_slice, 2), 3]);
+        fill_mask = false(size(image_slice, 1), size(image_slice, 2));
         % Draw outer structures first so cavities remain visible above them.
         for index = [3 4 1 2]
-            current_mask = masks{index}(:, :, slice);
+            current_mask = masks{index}(row_range, column_range, slice);
             for channel = 1:3
                 plane = fill_image(:, :, channel);
                 plane(current_mask) = colors(index, channel);
@@ -123,7 +126,7 @@ refresh_view();
         end
 
         for index = 1:numel(masks)
-            contour(ax, masks{index}(:, :, slice), [0.5 0.5], ...
+            contour(ax, masks{index}(row_range, column_range, slice), [0.5 0.5], ...
                 'Color', colors(index, :), 'LineWidth', 1.4);
         end
         axis(ax, 'image');
@@ -138,6 +141,46 @@ refresh_view();
         hold(ax, 'off');
         drawnow;
     end
+end
+
+function [row_range, column_range] = select_display_crop(images, masks, colors, gs_range)
+%SELECT_DISPLAY_CROP Define one display-only crop shared by every review slice.
+epicardium = masks{3};
+areas = squeeze(sum(sum(epicardium, 1), 2));
+[~, reference_slice] = max(areas);
+
+height = size(images, 1);
+width = size(images, 2);
+row_range = 1:height;
+column_range = 1:width;
+
+selection_figure = figure('Name', 'Define review crop', 'NumberTitle', 'off', ...
+    'Color', 'w');
+selection_axes = axes('Parent', selection_figure);
+imshow(images(:, :, reference_slice), gs_range, 'Parent', selection_axes);
+colormap(selection_axes, gray(256));
+hold(selection_axes, 'on');
+for index = 1:numel(masks)
+    contour(selection_axes, masks{index}(:, :, reference_slice), [0.5 0.5], ...
+        'Color', colors(index, :), 'LineWidth', 1.4);
+end
+title(selection_axes, sprintf(['Draw the review crop on slice %d, then double-click inside it. ' ...
+    'The crop affects display only.'], reference_slice));
+
+roi = drawrectangle(selection_axes, 'Color', [1.00 0.75 0.10], 'LineWidth', 1.4);
+wait(roi);
+if isvalid(roi) && ~isempty(roi.Position)
+    position = round(roi.Position);
+    first_column = max(1, position(1));
+    first_row = max(1, position(2));
+    last_column = min(width, first_column + max(1, position(3)) - 1);
+    last_row = min(height, first_row + max(1, position(4)) - 1);
+    column_range = first_column:last_column;
+    row_range = first_row:last_row;
+end
+if isvalid(selection_figure)
+    close(selection_figure);
+end
 end
 
 function metadata = load_slice_metadata(seg_path, files, slice_count)

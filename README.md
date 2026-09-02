@@ -7,8 +7,8 @@ from the legacy MATLAB project and does not modify source DICOM data.
 
 Milestone 1 provides structured DICOM inspection, explicit series/frame
 selection, full-volume DICOM-to-NIfTI preparation, modality routing, a CT
-TotalSegmentator adapter, canonical masks, automated mask QC, provenance, and
-3D Slicer-ready files.
+TotalSegmentator adapter, an experimental cine-CMR biv-me adapter, canonical
+masks, automated mask QC, provenance, and 3D Slicer-ready files.
 
 ## Canonical mask interface
 
@@ -36,10 +36,12 @@ Surface derivation needs a separate algorithm and validation milestone.
 - **CT:** TotalSegmentator `heartchambers_highres` is the first backend under
   evaluation. It is a licensed task (free academic/non-commercial licensing is
   available upstream). The pipeline never falls back to another task.
-- **MRI:** DICOM inspection and geometry-preserving preparation are supported.
-  The backend remains deliberately unconfigured because sequence type matters.
-  Representative local data include both static 3D MDE/LGE and gated cine bSSFP
-  patterns. See [docs/mri-backends.md](docs/mri-backends.md).
+- **MRI:** biv-me is available as an experimental backend for multi-view cine
+  CMR DICOM only. It is not valid for CT and does not segment scar in static
+  MDE/LGE. A separate rigid alignment stage can transfer fitted cine geometry
+  into a native LGE grid. The adapter preserves
+  native guidepoints and meshes, then rasterizes one selected phase into the
+  prepared source geometry. See [docs/bivme-backend.md](docs/bivme-backend.md).
 - **Human QC:** all outputs are research results and require visual inspection
   and, when necessary, correction in 3D Slicer before downstream experiments.
 
@@ -108,6 +110,31 @@ python -m vtseg segment-ct results/local-case --device gpu
 python -m vtseg segment-ct results/local-case --device gpu --force-split
 ```
 
+Run the separately installed biv-me backend on a prepared cine-CMR case:
+
+```bash
+python -m vtseg check-bivme-backend \
+  --bivme-root .backends/biv-me \
+  --python-executable "$HOME/miniconda3/envs/bivme311/bin/python"
+
+python -m vtseg segment-mri-bivme results/local-mri-case \
+  --dicom-directory /path/to/multiview-cine-cmr-dicoms \
+  --bivme-root .backends/biv-me \
+  --python-executable "$HOME/miniconda3/envs/bivme311/bin/python" \
+  --device gpu
+
+python -m vtseg align-bivme-lge results/local-mri-case \
+  --dicom-directory /path/to/full-cardiac-mr-study
+```
+
+`align-bivme-lge` registers and rasterizes in-process rather than shelling out,
+so it needs the `registration` extra (`pip install -e ".[registration]"`,
+SimpleITK and PyVista) or must be run from the biv-me environment.
+
+The prepared source volume must be an explicit frame from a cine MR series. The
+full multi-view CMR DICOM directory is passed to biv-me by a temporary symlink;
+the adapter does not copy DICOM pixels into this repository.
+
 Re-run mask QC after a controlled mask update:
 
 ```bash
@@ -132,6 +159,24 @@ results/local-case/
 │   ├── segmentation_metadata.json
 │   └── provenance.json
 └── qc/mask_qc.json
+```
+
+biv-me outputs are backend-scoped so they can coexist with other experiments:
+
+```text
+results/local-mri-case/
+├── segmentation/bivme/
+│   ├── raw/
+│   │   ├── guidepoints/
+│   │   ├── models/
+│   │   └── execution.log
+│   ├── normalized/
+│   │   ├── lv_blood_pool.nii.gz
+│   │   ├── rv_blood_pool.nii.gz
+│   │   └── myocardium.nii.gz
+│   ├── segmentation_metadata.json
+│   └── provenance.json
+└── qc/bivme/mask_qc.json
 ```
 
 The entire `results/` tree is ignored except its placeholder README. UIDs and

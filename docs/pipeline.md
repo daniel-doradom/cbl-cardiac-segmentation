@@ -13,7 +13,7 @@ explicit researcher series and frame selection
         ↓
 complete coherent 3-D NIfTI volume
         ↓
-CT adapter or explicit unconfigured-MRI status
+CT adapter, cine-CMR biv-me adapter, or explicit unsupported-MRI status
         ↓
 canonical masks → automated QC → 3D Slicer review
 ```
@@ -67,5 +67,9 @@ errors. These JSON files remain under ignored case directories.
 - No explicit frame for defensible cine: fail.
 - Existing prepared image or normalized outputs: refuse overwrite.
 - Missing CT CLI/task/license/weights: identify the boundary and fail.
-- MR without validated backend: retain the prepared image and write an explicit
-  machine-readable `not_configured` status.
+- Missing biv-me source/environment/model artifacts: identify the boundary and
+  fail without running inference.
+- CT, static MDE/LGE, or non-temporal MR supplied to biv-me: fail before
+  inference.
+- GPU requested without CUDA visibility and an allocation marker: fail before
+  inference.

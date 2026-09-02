@@ -11,7 +11,8 @@ from vtseg.dicom.series import inventory_report, scan_headers
 from vtseg.errors import VTSegError
 from vtseg.provenance import write_json
 from vtseg.qc.masks import run_case_qc
-from vtseg.segmentation.mri import UnconfiguredMRIBackend
+from vtseg.segmentation.bivme import BivMeMRIBackend
+from vtseg.segmentation.bivme_lge import align_bivme_to_lge
 from vtseg.segmentation.totalsegmentator import TotalSegmentatorCTBackend
 
 
@@ -72,10 +73,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="split a large volume into parts to reduce TotalSegmentator memory use",
     )
 
+    bivme_check_parser = sub.add_parser(
+        "check-bivme-backend",
+        help="verify the external biv-me source, environment, and model artifacts",
+    )
+    bivme_check_parser.add_argument("--bivme-root", type=Path)
+    bivme_check_parser.add_argument("--python-executable", type=Path)
+
+    bivme_parser = sub.add_parser(
+        "segment-mri-bivme",
+        help="run cine-CMR biv-me fitting, canonical rasterization, and QC",
+    )
+    bivme_parser.add_argument("case_directory", type=Path)
+    bivme_parser.add_argument("--dicom-directory", required=True, type=Path)
+    bivme_parser.add_argument("--bivme-root", type=Path)
+    bivme_parser.add_argument("--python-executable", type=Path)
+    bivme_parser.add_argument("--device", default="gpu", choices=("gpu", "cpu"))
+    bivme_parser.add_argument("--frame", type=int)
+    bivme_parser.add_argument(
+        "--view-correction",
+        default="automatic",
+        choices=("automatic", "adaptive", "manual"),
+    )
+    bivme_parser.add_argument("--workers", type=int, default=4)
+    bivme_parser.add_argument("--plots", action="store_true")
+
+    lge_parser = sub.add_parser(
+        "align-bivme-lge",
+        help="phase-match and rigidly align fitted biv-me meshes to native LGE geometry",
+    )
+    lge_parser.add_argument("case_directory", type=Path)
+    lge_parser.add_argument("--dicom-directory", required=True, type=Path)
+    lge_parser.add_argument("--lge-series", help="explicit LGE SeriesInstanceUID")
+    lge_parser.add_argument("--mesh-frame", type=int, help="override automatic trigger-time matching")
+
     qc_parser = sub.add_parser("qc-masks", help="recompute QC for normalized masks")
     qc_parser.add_argument("case_directory", type=Path)
 
-    sub.add_parser("mri-status", help="report the intentionally unconfigured MRI backend")
+    mri_status_parser = sub.add_parser("mri-status", help="report the cine-CMR biv-me backend")
+    mri_status_parser.add_argument("--bivme-root", type=Path)
+    mri_status_parser.add_argument("--python-executable", type=Path)
     return parser
 
 
@@ -126,14 +163,56 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
             return 0
 
+        if args.command == "check-bivme-backend":
+            status = asdict(BivMeMRIBackend(
+                root=args.bivme_root,
+                python_executable=args.python_executable,
+            ).status())
+            print(json.dumps(status, indent=2, sort_keys=True))
+            return 0 if status["available"] else 2
+
+        if args.command == "segment-mri-bivme":
+            provenance = BivMeMRIBackend(
+                root=args.bivme_root,
+                python_executable=args.python_executable,
+            ).run(
+                args.case_directory,
+                dicom_directory=args.dicom_directory,
+                device=args.device,
+                frame=args.frame,
+                correct_mode=args.view_correction,
+                workers=args.workers,
+                generate_plots=args.plots,
+                repo_root=_repo_root(),
+            )
+            print("biv-me segmentation, rasterization, and QC complete")
+            print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
+            return 0
+
+        if args.command == "align-bivme-lge":
+            provenance = align_bivme_to_lge(
+                args.case_directory,
+                dicom_directory=args.dicom_directory,
+                lge_series_uid=args.lge_series,
+                mesh_frame=args.mesh_frame,
+                repo_root=_repo_root(),
+            )
+            print("biv-me meshes aligned and rasterized on native LGE geometry")
+            print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
+            return 0
+
         if args.command == "qc-masks":
             report = run_case_qc(args.case_directory)
             print(json.dumps({"warnings": report["warnings"]}, indent=2))
             return 0
 
         if args.command == "mri-status":
-            print(json.dumps(asdict(UnconfiguredMRIBackend().status()), indent=2, sort_keys=True))
-            return 2
+            status = asdict(BivMeMRIBackend(
+                root=args.bivme_root,
+                python_executable=args.python_executable,
+            ).status())
+            print(json.dumps(status, indent=2, sort_keys=True))
+            return 0 if status["available"] else 2
     except VTSegError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

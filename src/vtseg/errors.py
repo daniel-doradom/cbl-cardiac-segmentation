@@ -24,3 +24,7 @@ class BackendUnavailable(VTSegError):
 
 class NormalizationError(VTSegError):
     pass
+
+
+class RegistrationError(VTSegError):
+    pass

@@ -50,6 +50,8 @@ def dicom_writer():
         modality: str = "MR",
         trigger_time: float | None = None,
         pixels: np.ndarray | None = None,
+        series_description: str = "Synthetic non-PHI series",
+        frame_of_reference: str | None = None,
     ) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         meta = FileMetaDataset()
@@ -63,10 +65,11 @@ def dicom_writer():
         ds.SeriesInstanceUID = series_uid
         ds.Modality = modality
         ds.SeriesNumber = 1
-        ds.SeriesDescription = "Synthetic non-PHI series"
+        ds.SeriesDescription = series_description
         ds.ProtocolName = "Synthetic"
-        ds.Rows = 4
-        ds.Columns = 5
+        data = np.full((4, 5), instance, dtype=np.uint16) if pixels is None else np.asarray(pixels)
+        ds.Rows = int(data.shape[0])
+        ds.Columns = int(data.shape[1])
         ds.PixelSpacing = [2.0, 3.0]
         ds.SliceThickness = 4.0
         ds.SpacingBetweenSlices = 4.0
@@ -75,7 +78,8 @@ def dicom_writer():
         ds.InstanceNumber = instance
         if trigger_time is not None:
             ds.TriggerTime = trigger_time
-        data = np.full((4, 5), instance, dtype=np.uint16) if pixels is None else pixels
+        if frame_of_reference is not None:
+            ds.FrameOfReferenceUID = frame_of_reference
         ds.SamplesPerPixel = 1
         ds.PhotometricInterpretation = "MONOCHROME2"
         ds.BitsAllocated = 16

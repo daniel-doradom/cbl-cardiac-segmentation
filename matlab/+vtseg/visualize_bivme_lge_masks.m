@@ -128,12 +128,12 @@ refresh_view();
         end
         axis(ax, 'image');
         axis(ax, 'off');
-        title(ax, sprintf('MATLAB slice %d of %d', slice, slice_count));
+        title(ax, sprintf('Base-to-apex MATLAB slice %d of %d', slice, slice_count));
         set(slice_text, 'String', sprintf('Slice %d / %d', slice, slice_count));
         current = slice_metadata(slice);
         set(source_text, 'String', sprintf( ...
-            'MATLAB mask: %d / %d\nRaw DICOM: %s\nExport order: %s\nReference K index: %s', ...
-            slice, slice_count, current.dicom_file, current.slice_order, ...
+            'MATLAB mask: %d / %d\nRaw DICOM: %s\nBase-to-apex source: %s\nReference z-index: %s', ...
+            slice, slice_count, current.dicom_file, current.base_to_apex_slice, ...
             current.reference_index));
         hold(ax, 'off');
         drawnow;
@@ -141,7 +141,7 @@ refresh_view();
 end
 
 function metadata = load_slice_metadata(seg_path, files, slice_count)
-metadata = repmat(struct('dicom_file', '', 'slice_order', 'not recorded', ...
+metadata = repmat(struct('dicom_file', '', 'base_to_apex_slice', 'not recorded', ...
     'reference_index', 'not recorded'), slice_count, 1);
 for index = 1:slice_count
     metadata(index).dicom_file = files(index).name;
@@ -160,8 +160,8 @@ for index = 1:slice_count
     if isfield(entry, 'dicom_file')
         metadata(index).dicom_file = entry.dicom_file;
     end
-    if isfield(manifest, 'slice_order')
-        metadata(index).slice_order = char(manifest.slice_order);
+    if isfield(entry, 'base_to_apex_reference_slice')
+        metadata(index).base_to_apex_slice = num2str(entry.base_to_apex_reference_slice);
     end
     if isfield(entry, 'reference_volume_index')
         metadata(index).reference_index = num2str(entry.reference_volume_index);

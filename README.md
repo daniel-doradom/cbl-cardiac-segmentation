@@ -226,11 +226,6 @@ python -m vtseg export-matlab-seg \
   --start-slice START --end-slice END --slices COUNT
 ```
 
-When reviewing the LGE reference in Slicer, `--slice-order reference` with
-`--start-k` and `--end-k` accepts Slicer's zero-based K indices directly. This
-avoids converting them to the one-based positions used by `--start-slice` and
-`--end-slice`.
-
 In MATLAB, add the repository `matlab/` folder, run `setup_vtseg`, then run
 `vtseg.main_bivme_lge_tetmesh` on `$case/manual/matlab`. After correction and
 mesh generation, use `import-matlab-seg` above to create canonical manual NIfTI

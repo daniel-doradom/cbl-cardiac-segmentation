@@ -133,16 +133,6 @@ def build_parser() -> argparse.ArgumentParser:
     matlab_parser.add_argument("--start-slice", type=int, default=1, help="one-based base-to-apex start")
     matlab_parser.add_argument("--end-slice", type=int, help="one-based base-to-apex end")
     matlab_parser.add_argument(
-        "--start-k",
-        type=int,
-        help="zero-based reference K index; requires --slice-order reference",
-    )
-    matlab_parser.add_argument(
-        "--end-k",
-        type=int,
-        help="zero-based reference K index; requires --slice-order reference",
-    )
-    matlab_parser.add_argument(
         "--slice-order",
         choices=("base-to-apex", "reference"),
         default="base-to-apex",
@@ -256,22 +246,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "export-matlab-seg":
-            if args.start_k is not None or args.end_k is not None:
-                if args.slice_order != "reference":
-                    raise VTSegError("--start-k and --end-k require --slice-order reference")
-                if args.start_k is not None and args.start_slice != 1:
-                    raise VTSegError("use either --start-slice or --start-k, not both")
-                if args.end_k is not None and args.end_slice is not None:
-                    raise VTSegError("use either --end-slice or --end-k, not both")
-            start_slice = args.start_k + 1 if args.start_k is not None else args.start_slice
-            end_slice = args.end_k + 1 if args.end_k is not None else args.end_slice
             manifest = export_matlab_case(
                 args.mask_directory,
                 args.reference,
                 args.output,
                 slices=args.slices,
-                start_slice=start_slice,
-                end_slice=end_slice,
+                start_slice=args.start_slice,
+                end_slice=args.end_slice,
                 slice_order=args.slice_order.replace("-", "_"),
                 repo_root=_repo_root(),
             )

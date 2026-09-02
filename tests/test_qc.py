@@ -2,7 +2,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from vtseg.qc.masks import evaluate_masks, mask_statistics, run_case_qc
+from vtseg.qc.masks import evaluate_masks, mask_statistics, run_backend_qc, run_case_qc
 
 
 def test_empty_mask_statistics():
@@ -55,3 +55,22 @@ def test_case_qc_writes_machine_readable_report(tmp_path):
     report = run_case_qc(tmp_path)
     assert (tmp_path / "qc" / "mask_qc.json").is_file()
     assert len(report["masks"]) == 3
+
+
+def test_backend_scoped_qc_uses_requested_paths(tmp_path):
+    (tmp_path / "volume").mkdir()
+    normalized = tmp_path / "segmentation" / "bivme" / "normalized"
+    normalized.mkdir(parents=True)
+    save(tmp_path / "volume" / "image.nii.gz", np.zeros((4, 4, 4)))
+    for index, name in enumerate(("lv_blood_pool", "rv_blood_pool", "myocardium"), start=1):
+        mask = np.zeros((4, 4, 4))
+        mask[index, 1, 1] = 1
+        save(normalized / f"{name}.nii.gz", mask)
+    report_path = tmp_path / "qc" / "bivme" / "mask_qc.json"
+    report = run_backend_qc(
+        tmp_path,
+        normalized_directory=normalized,
+        report_path=report_path,
+    )
+    assert report_path.is_file()
+    assert report["masks"]["myocardium"]["file"].startswith("segmentation/bivme/")

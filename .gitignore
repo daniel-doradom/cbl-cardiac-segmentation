@@ -34,6 +34,7 @@ temp/
 nnUNet_raw/
 nnUNet_preprocessed/
 nnUNet_results/
+.backends/
 
 # Python/build/editor state
 .venv/

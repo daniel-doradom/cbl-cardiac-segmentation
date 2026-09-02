@@ -140,13 +140,31 @@ def evaluate_masks(source_path: str | Path, masks: dict[str, str | Path]) -> dic
     return report
 
 
-def run_case_qc(case_dir: str | Path) -> dict[str, Any]:
+def run_backend_qc(
+    case_dir: str | Path,
+    *,
+    normalized_directory: str | Path,
+    report_path: str | Path,
+) -> dict[str, Any]:
     case = Path(case_dir).resolve()
-    normalized = case / "segmentation" / "normalized"
+    normalized = Path(normalized_directory).resolve()
     masks = {name: normalized / f"{name}.nii.gz" for name in CANONICAL_MASKS}
     report = evaluate_masks(case / "volume" / "image.nii.gz", masks)
     report["source_image"] = "volume/image.nii.gz"
     for value in report["masks"].values():
-        value["file"] = str(Path(value["file"]).relative_to(case))
-    write_json(case / "qc" / "mask_qc.json", report)
+        mask_path = Path(value["file"])
+        try:
+            value["file"] = str(mask_path.relative_to(case))
+        except ValueError:
+            value["file"] = mask_path.name
+    write_json(report_path, report)
     return report
+
+
+def run_case_qc(case_dir: str | Path) -> dict[str, Any]:
+    case = Path(case_dir).resolve()
+    return run_backend_qc(
+        case,
+        normalized_directory=case / "segmentation" / "normalized",
+        report_path=case / "qc" / "mask_qc.json",
+    )

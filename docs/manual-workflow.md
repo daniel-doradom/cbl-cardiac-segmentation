@@ -72,11 +72,17 @@ study=data/diagnostics/CASE/Diagnostics
 case=results/case-mri
 
 # Inventory the study, then inspect the JSON locally and choose an explicit
-# cine short-axis series UID and temporal frame (zero based).
+# cine short-axis series UID and temporal frame (zero based). Replace these
+# quoted placeholders with actual values from the inventory; do not type the
+# words SERIES_INSTANCE_UID or FRAME into prepare-series.
+cineSeriesUid='SERIES_INSTANCE_UID_FROM_INVENTORY'
+frame=0
+lgeSeriesUid='MATCHING_LGE_SERIES_UID_FROM_THE_SAME_STUDY'
+
 PYTHONPATH=src python -m vtseg inspect-dicom "$study" \
   --json "$case/source/dicom_inventory.json"
 PYTHONPATH=src python -m vtseg prepare-series "$study" \
-  --series SERIES_INSTANCE_UID --frame FRAME --output "$case"
+  --series "$cineSeriesUid" --frame "$frame" --output "$case"
 
 # Verify the installed backend, then run the cine model on the allocated GPU.
 PYTHONPATH=src python -m vtseg check-bivme-backend
@@ -85,12 +91,18 @@ PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
 
 # Select native LGE/MDE, register cine geometry, and rasterize LGE-space masks.
 PYTHONPATH=src python -m vtseg align-bivme-lge "$case" \
-  --dicom-directory "$study"
+  --dicom-directory "$study" --lge-series "$lgeSeriesUid"
 ```
 
 `PYTHONPATH=src` makes the checked-out package runnable even when it has not
 been installed into that conda environment. It may be omitted when `vtseg` is
 already installed in the active environment.
+
+When an input directory contains more than one cardiac-MR study, do not mix a
+cine series from one study with an LGE series from another. Choose the cine
+short-axis and native LGE/MDE series from the same study group. Passing
+`--lge-series` makes that choice reproducible rather than relying on automatic
+selection among competing LGE stacks.
 
 The paths to review in Slicer are:
 

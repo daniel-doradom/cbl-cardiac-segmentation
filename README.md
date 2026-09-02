@@ -125,6 +125,12 @@ python -m vtseg segment-mri-bivme results/local-mri-case \
 
 python -m vtseg align-bivme-lge results/local-mri-case \
   --dicom-directory /path/to/full-cardiac-mr-study
+
+python -m vtseg export-matlab-seg \
+  results/local-mri-case/segmentation/bivme/lge_aligned/normalized \
+  --reference results/local-mri-case/references/lge \
+  --output results/local-mri-case/matlab-bivme-lge \
+  --start-slice 1 --end-slice 100 --slices 12
 ```
 
 `align-bivme-lge` registers and rasterizes in-process rather than shelling out,
@@ -134,6 +140,24 @@ SimpleITK and PyVista) or must be run from the biv-me environment.
 The prepared source volume must be an explicit frame from a cine MR series. The
 full multi-view CMR DICOM directory is passed to biv-me by a temporary symlink;
 the adapter does not copy DICOM pixels into this repository.
+
+`export-matlab-seg` writes an ignored MATLAB case with DICOM files in `raw/`
+and matching `Lendo.mat`, `Rendo.mat`, `Epi.mat`, and `myocardium.mat` stacks
+in `seg/`. It orders the stack base-to-apex from the mask extent. `--start-slice`
+and `--end-slice` are one-based positions in that order; `--slices` retains
+both endpoints and distributes intermediate slices as evenly as possible. In MATLAB, run
+`main_bivme_lge_tetmesh` from `my_ECGI_Pipeline/Heart Segmentation/Code/Code_RVOT`
+with the exported case directory; it opens the imported masks for correction,
+then produces the legacy biventricular mesh outputs. Pass `true` as its third
+argument to launch the manual LGE scar workflow before meshing.
+
+Before meshing, `visualize_bivme_lge_masks(case_directory)` opens an interactive
+MATLAB review window with image/mask contours, a slice slider, a mask-fill
+toggle, and adjustable fill opacity.
+
+After meshing, `visualize_bivme_lge_results(case_directory)` combines that
+interactive review with generated surface/tetrahedral mesh and node-value
+figures. Its optional third argument enables slice-to-mesh animation.
 
 Re-run mask QC after a controlled mask update:
 

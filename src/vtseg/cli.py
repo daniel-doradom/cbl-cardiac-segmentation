@@ -13,6 +13,7 @@ from vtseg.provenance import write_json
 from vtseg.qc.masks import run_case_qc
 from vtseg.segmentation.bivme import BivMeMRIBackend
 from vtseg.segmentation.bivme_lge import align_bivme_to_lge
+from vtseg.segmentation.matlab_export import export_matlab_case
 from vtseg.segmentation.totalsegmentator import TotalSegmentatorCTBackend
 
 
@@ -107,6 +108,28 @@ def build_parser() -> argparse.ArgumentParser:
     lge_parser.add_argument("--lge-series", help="explicit LGE SeriesInstanceUID")
     lge_parser.add_argument("--mesh-frame", type=int, help="override automatic trigger-time matching")
 
+    matlab_parser = sub.add_parser(
+        "export-matlab-seg",
+        help="export canonical masks as a MATLAB meshing case (raw/ DICOMs + seg/ stacks)",
+    )
+    matlab_parser.add_argument("mask_directory", type=Path)
+    matlab_parser.add_argument("--reference", required=True, type=Path,
+                               help="prepared case whose geometry the masks share")
+    matlab_parser.add_argument("--output", required=True, type=Path)
+    matlab_parser.add_argument(
+        "--slices",
+        type=int,
+        help="total slices within the selected range; both endpoints are retained",
+    )
+    matlab_parser.add_argument("--start-slice", type=int, default=1, help="one-based base-to-apex start")
+    matlab_parser.add_argument("--end-slice", type=int, help="one-based base-to-apex end")
+    matlab_parser.add_argument(
+        "--slice-order",
+        choices=("base-to-apex", "reference"),
+        default="base-to-apex",
+        help="base-to-apex is inferred from endpoint mask area; reference preserves NIfTI order",
+    )
+
     qc_parser = sub.add_parser("qc-masks", help="recompute QC for normalized masks")
     qc_parser.add_argument("case_directory", type=Path)
 
@@ -199,6 +222,21 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("biv-me meshes aligned and rasterized on native LGE geometry")
             print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
+            return 0
+
+        if args.command == "export-matlab-seg":
+            manifest = export_matlab_case(
+                args.mask_directory,
+                args.reference,
+                args.output,
+                slices=args.slices,
+                start_slice=args.start_slice,
+                end_slice=args.end_slice,
+                slice_order=args.slice_order.replace("-", "_"),
+                repo_root=_repo_root(),
+            )
+            print(f"exported {manifest['slice_count']} slices to {args.output}")
+            print(json.dumps({"mask_dimensions": manifest["mask_dimensions"]}, indent=2))
             return 0
 
         if args.command == "qc-masks":

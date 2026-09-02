@@ -241,6 +241,91 @@ def test_align_bivme_to_lge_end_to_end(tmp_path, dicom_writer):
     for relative in provenance["output_files"]:
         assert (case / relative).exists(), relative
 
+
+def test_export_matlab_seg_case(tmp_path, dicom_writer):
+    pytest.importorskip("scipy")
+    from scipy.io import loadmat
+
+    from vtseg.segmentation.matlab_export import export_matlab_case
+
+    # A prepared reference case, built the way prepare_series builds one.
+    dicom_root = tmp_path / "study"
+    for index, z in enumerate(LGE_Z):
+        dicom_writer(
+            dicom_root / f"IM{index:06d}",
+            study_uid=STUDY, series_uid=LGE_UID, z=z, instance=len(LGE_Z) - index,
+            pixels=_blob(z), series_description="Synthetic MDE",
+        )
+    from vtseg.dicom.convert import prepare_series
+    from vtseg.dicom.series import scan_headers
+
+    reference = tmp_path / "reference"
+    prepare_series(scan_headers(dicom_root), LGE_UID, reference)
+
+    image = nib.load(str(reference / "volume" / "image.nii.gz"))
+    masks = tmp_path / "masks"
+    masks.mkdir()
+    lv = np.zeros(image.shape, dtype=np.uint8); lv[4:8, 4:8, :] = 1
+    rv = np.zeros(image.shape, dtype=np.uint8); rv[9:12, 4:8, :] = 1
+    myo = np.zeros(image.shape, dtype=np.uint8); myo[2:14, 2:10, :] = 1
+    # The larger final endpoint is inferred as the base, so MATLAB order must reverse.
+    myo[:, :, -1] = 1
+    myo[lv > 0] = 0; myo[rv > 0] = 0
+    for name, data in (("lv_blood_pool", lv), ("rv_blood_pool", rv), ("myocardium", myo)):
+        nib.save(nib.Nifti1Image(data, image.affine), masks / f"{name}.nii.gz")
+
+    out = tmp_path / "matlab-case"
+    manifest = export_matlab_case(masks, reference, out, start_slice=1, end_slice=5, slices=3)
+
+    assert manifest["slice_count"] == 3
+    assert manifest["slice_order"] == "base_to_apex"
+    assert manifest["slice_order_reason"] == "reference_last_endpoint_larger"
+    assert [item["base_to_apex_reference_slice"] for item in manifest["slices"]] == [1, 3, 5]
+    assert [s["dicom_file"] for s in manifest["slices"]] == sorted(
+        s["dicom_file"] for s in manifest["slices"]
+    ), "MATLAB stack must be ordered by DICOM file name"
+    exported = sorted(q.name for q in (out / "raw").iterdir())
+    assert len(exported) == 3
+    # readdata globs '*.dcm' case-sensitively; without the suffix it finds nothing.
+    assert all(name.endswith(".dcm") for name in exported), exported
+    assert exported == sorted(s["dicom_file"] for s in manifest["slices"])
+    assert [s["reference_volume_index"] for s in manifest["slices"]] == [5, 3, 1]
+    for d in ("mesh", "remesh", "global"):
+        assert (out / d).is_dir()
+
+    epi = loadmat(str(out / "seg" / "Epi.mat"))["Epi"]
+    lendo = loadmat(str(out / "seg" / "Lendo.mat"))["Lendo"]
+    rendo = loadmat(str(out / "seg" / "Rendo.mat"))["Rendo"]
+    myocardium = loadmat(str(out / "seg" / "myocardium.mat"))["myocardium"]
+    assert epi.shape == (image.shape[0], image.shape[1], 3)
+    # Epi must enclose both cavities, and myocardium is the wall between them.
+    assert np.all(epi[lendo > 0]) and np.all(epi[rendo > 0])
+    assert not np.any(myocardium & (lendo > 0)) and not np.any(myocardium & (rendo > 0))
+    assert np.array_equal(myocardium > 0, (epi > 0) & ~(lendo > 0) & ~(rendo > 0))
+
+    # info.mat is intentionally left to MATLAB's own readdata.
+    assert not (out / "seg" / "info.mat").exists()
+
+    endpoint_out = tmp_path / "matlab-case-endpoints"
+    endpoint_manifest = export_matlab_case(
+        masks, reference, endpoint_out, start_slice=1, end_slice=6, slices=4
+    )
+    endpoint_indices = [item["reference_volume_index"] for item in endpoint_manifest["slices"]]
+    assert endpoint_indices[0] == image.shape[2] - 1
+    assert endpoint_indices[-1] == 0
+    assert set(abs(right - left) for left, right in zip(endpoint_indices, endpoint_indices[1:])) <= {1, 2}
+
+    dense_out = tmp_path / "matlab-case-dense"
+    dense_manifest = export_matlab_case(masks, reference, dense_out)
+    assert dense_manifest["slice_count"] == image.shape[2]
+    assert dense_manifest["slice_selection"] == "all_selected_range_slices"
+    assert [s["reference_volume_index"] for s in dense_manifest["slices"]] == list(
+        reversed(range(image.shape[2]))
+    )
+    assert [item["base_to_apex_reference_slice"] for item in dense_manifest["slices"]] == list(
+        range(1, image.shape[2] + 1)
+    )
+
 def test_align_bivme_to_lge_refuses_to_overwrite(tmp_path, dicom_writer):
     pytest.importorskip("SimpleITK")
     pyvista = pytest.importorskip("pyvista")

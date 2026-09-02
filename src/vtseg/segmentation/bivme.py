@@ -472,7 +472,7 @@ class BivMeMRIBackend(SegmentationBackend):
             })
             raise BackendUnavailable(message)
 
-        qc_path = case / "qc" / "bivme" / "mask_qc.json"
+        qc_path = backend_dir / "qc" / "mask_qc.json"
         qc = run_backend_qc(
             case,
             normalized_directory=normalized_dir,
@@ -495,7 +495,7 @@ class BivMeMRIBackend(SegmentationBackend):
         source_image = nib.load(str(image_path))
         output_files = [
             str((normalized_dir / f"{name}.nii.gz").relative_to(case))
-            for name in ("lv_blood_pool", "rv_blood_pool", "myocardium")
+            for name in ("lv_blood_pool", "rv_blood_pool", "myocardium", "combined_labels")
         ] + [
             str(path.relative_to(case)) for path in meshes.values()
         ] + [str(qc_path.relative_to(case)), str(log_path.relative_to(case))]
@@ -546,7 +546,7 @@ class BivMeMRIBackend(SegmentationBackend):
             "native_outputs_preserved": True,
             "normalized_outputs": {
                 name: str(normalized_dir / f"{name}.nii.gz")
-                for name in ("lv_blood_pool", "rv_blood_pool", "myocardium")
+                for name in ("lv_blood_pool", "rv_blood_pool", "myocardium", "combined_labels")
             },
             "timestamp": utc_now(),
         })

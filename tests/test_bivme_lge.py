@@ -218,7 +218,7 @@ def test_align_bivme_to_lge_end_to_end(tmp_path, dicom_writer):
 
     normalized = case / "segmentation" / "bivme" / "lge_aligned" / "normalized"
     lge_image = nib.load(str(case / "references" / "lge" / "volume" / "image.nii.gz"))
-    for name in ("lv_blood_pool", "rv_blood_pool", "myocardium"):
+    for name in ("lv_blood_pool", "rv_blood_pool", "myocardium", "combined_labels"):
         mask = nib.load(str(normalized / f"{name}.nii.gz"))
         assert mask.shape == lge_image.shape
         assert np.allclose(mask.affine, lge_image.affine)
@@ -231,7 +231,7 @@ def test_align_bivme_to_lge_end_to_end(tmp_path, dicom_writer):
     assert (registration / "fixed_lge_to_moving_cine.tfm").is_file()
     assert (registration / "cine_in_lge.nii.gz").is_file()
 
-    qc = json.loads((case / "qc" / "bivme" / "lge_alignment.json").read_text(encoding="utf-8"))
+    qc = json.loads((case / "segmentation" / "bivme" / "lge_aligned" / "qc" / "lge_alignment.json").read_text(encoding="utf-8"))
     assert qc["frame_of_reference_matches"] is True
     assert qc["phase_matching"]["timing_difference_ms"] == 10.0
     assert "upstream biv-me warning" in qc["warnings"]
@@ -290,8 +290,9 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     assert all(name.endswith(".dcm") for name in exported), exported
     assert exported == sorted(s["dicom_file"] for s in manifest["slices"])
     assert [s["reference_volume_index"] for s in manifest["slices"]] == [5, 3, 1]
-    for d in ("mesh", "remesh", "global"):
+    for d in ("mesh", "remesh", "global", "visualizations"):
         assert (out / d).is_dir()
+    assert (out / "manifest.json").is_file()
 
     epi = loadmat(str(out / "seg" / "Epi.mat"))["Epi"]
     lendo = loadmat(str(out / "seg" / "Lendo.mat"))["Lendo"]

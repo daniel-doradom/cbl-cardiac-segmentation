@@ -152,8 +152,12 @@ def export_matlab_case(
 
     raw_dir = output / "raw"
     seg_dir = output / "seg"
-    for directory in (raw_dir, seg_dir, output / "mesh", output / "remesh", output / "global"):
+    for directory in (
+        raw_dir, seg_dir, output / "mesh", output / "remesh", output / "global", output / "visualizations"
+    ):
         directory.mkdir(parents=True)
+    if output.name == "matlab":
+        (output.parent / "slicer").mkdir(exist_ok=True)
 
     # MATLAB's readdata globs strcat(path,'*.dcm') and is case-sensitive on Linux, so the
     # extension is mandatory; appending it to a zero-padded stem preserves dir()'s name sort.
@@ -209,6 +213,7 @@ def export_matlab_case(
         ],
     }
     write_json(seg_dir / "bivme_export_manifest.json", manifest)
+    write_json(output / "manifest.json", manifest)
 
     provenance = base_provenance(
         git_commit=git_commit(repo_root) if repo_root else None,

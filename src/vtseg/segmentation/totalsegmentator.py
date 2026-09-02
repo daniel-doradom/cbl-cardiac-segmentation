@@ -14,7 +14,7 @@ import nibabel as nib
 
 from vtseg.errors import BackendUnavailable, SeriesSelectionError
 from vtseg.provenance import base_provenance, git_commit, software_versions, utc_now, write_json, write_provenance
-from vtseg.qc.masks import run_case_qc
+from vtseg.qc.masks import run_backend_qc
 from vtseg.segmentation.base import BackendStatus, SegmentationBackend
 from vtseg.segmentation.normalize import TOTALSEGMENTATOR_CT_MAPPING, normalize_masks
 
@@ -104,7 +104,8 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             )
 
         status = self.status()
-        metadata_path = case_dir / "segmentation" / "segmentation_metadata.json"
+        backend_dir = case_dir / "segmentation" / "totalsegmentator"
+        metadata_path = backend_dir / "segmentation_metadata.json"
         if not status.available:
             payload = {
                 "status": "blocked",
@@ -117,10 +118,10 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             write_json(metadata_path, payload)
             raise BackendUnavailable(status.detail)
 
-        normalized_dir = case_dir / "segmentation" / "normalized"
+        normalized_dir = backend_dir / "normalized"
         if any(normalized_dir.glob("*.nii.gz")):
             raise BackendUnavailable(f"refusing to overwrite normalized masks in {normalized_dir}")
-        raw_dir = case_dir / "segmentation" / "raw"
+        raw_dir = backend_dir / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
         report_path = raw_dir / "totalsegmentator_report.json"
         command = [
@@ -161,7 +162,8 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
         outputs = normalize_masks(
             image_path, raw_dir, normalized_dir, TOTALSEGMENTATOR_CT_MAPPING
         )
-        qc = run_case_qc(case_dir)
+        qc_path = backend_dir / "qc" / "mask_qc.json"
+        qc = run_backend_qc(case_dir, normalized_directory=normalized_dir, report_path=qc_path)
         image = nib.load(str(image_path))
         provenance = base_provenance(
             git_commit=git_commit(repo_root) if repo_root else None,
@@ -188,11 +190,11 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             device=device,
             output_files=[
                 str(Path(path).relative_to(case_dir)) for path in outputs.values()
-            ] + ["qc/mask_qc.json"],
+            ] + [str(qc_path.relative_to(case_dir))],
             software_versions=software_versions(),
             warnings=qc.get("warnings", []),
         )
-        write_provenance(case_dir / "segmentation" / "provenance.json", provenance)
+        write_provenance(backend_dir / "provenance.json", provenance)
         metadata = {
             "status": "complete",
             "backend": "TotalSegmentator",

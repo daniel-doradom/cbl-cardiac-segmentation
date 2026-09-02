@@ -163,8 +163,16 @@ def run_backend_qc(
 
 def run_case_qc(case_dir: str | Path) -> dict[str, Any]:
     case = Path(case_dir).resolve()
+    backend_directory = case / "segmentation" / "totalsegmentator"
+    if backend_directory.is_dir():
+        normalized_directory = backend_directory / "normalized"
+        report_path = backend_directory / "qc" / "mask_qc.json"
+    else:
+        # Read-only compatibility for existing prepared case output trees.
+        normalized_directory = case / "segmentation" / "normalized"
+        report_path = case / "qc" / "mask_qc.json"
     return run_backend_qc(
         case,
-        normalized_directory=case / "segmentation" / "normalized",
-        report_path=case / "qc" / "mask_qc.json",
+        normalized_directory=normalized_directory,
+        report_path=report_path,
     )

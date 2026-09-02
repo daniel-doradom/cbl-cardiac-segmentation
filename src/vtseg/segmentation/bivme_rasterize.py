@@ -10,6 +10,8 @@ from typing import Any
 import nibabel as nib
 import numpy as np
 
+from vtseg.segmentation.normalize import write_combined_labels
+
 
 def canonical_masks(
     lv_enclosure: np.ndarray,
@@ -122,6 +124,7 @@ def rasterize(
         image.set_qform(source.affine, code=1)
         image.set_sform(source.affine, code=1)
         nib.save(image, output_directory / f"{name}.nii.gz")
+    write_combined_labels(source_path, output_directory)
 
     return {
         "coordinate_conversion": "DICOM LPS mesh coordinates to NIfTI RAS",
@@ -129,6 +132,7 @@ def rasterize(
         "mesh_open_edges": {name: int(mesh.n_open_edges) for name, mesh in meshes.items()},
         "enclosure_voxels": {name: int(mask.sum()) for name, mask in enclosures.items()},
         "canonical_voxels": {name: int(mask.sum()) for name, mask in masks.items()},
+        "combined_labels": "combined_labels.nii.gz",
     }
 
 

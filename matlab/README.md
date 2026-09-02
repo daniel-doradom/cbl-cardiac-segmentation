@@ -1,0 +1,26 @@
+# MATLAB Manual Review and Meshing
+
+This directory contains the maintained MATLAB implementation. It is source
+code only; all DICOM, masks, corrections, meshes, and figures remain under an
+ignored `results/<case>/manual/matlab/` case directory.
+
+## Prerequisites
+
+- MATLAB with Image Processing Toolbox.
+- A compatible, separately installed iso2mesh checkout. Set
+  `VTSEG_ISO2MESH` to that checkout before starting MATLAB. The setup function
+  verifies `surf2mesh` and `plotmesh`; iso2mesh is not vendored here.
+
+## Run
+
+```matlab
+repoRoot = '/path/to/vt-segmentation-eval';
+addpath(fullfile(repoRoot, 'matlab'));
+setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh');
+
+caseDirectory = fullfile(repoRoot, 'results', 'case-name', 'manual', 'matlab');
+vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);
+```
+
+Use `vtseg.visualize_bivme_lge_masks(caseDirectory, [])` for the interactive
+slice/mask review. MATLAB corrections are authoritative for mesh generation.

@@ -462,7 +462,7 @@ def align_bivme_to_lge(
     warnings.append("manual cine-to-LGE alignment review in 3D Slicer is required before scar analysis")
     warnings = sorted(set(warnings))
     qc["warnings"] = warnings
-    qc_path = case / "qc" / "bivme" / "lge_alignment.json"
+    qc_path = aligned_root / "qc" / "lge_alignment.json"
     write_json(qc_path, qc)
 
     lge_image = nib.load(str(lge_image_path))
@@ -476,6 +476,7 @@ def align_bivme_to_lge(
     ]
     output_files.extend(str(path.relative_to(case)) for path in transformed_meshes.values())
     output_files.extend(str(path.relative_to(case)) for path in mask_paths.values())
+    output_files.append(str((normalized / "combined_labels.nii.gz").relative_to(case)))
     provenance = base_provenance(
         git_commit=git_commit(repo_root) if repo_root else None,
         input_study_uid=cine_selection["study_uid"],
@@ -520,7 +521,7 @@ def align_bivme_to_lge(
         "target_geometry": str(lge_image_path.relative_to(case)),
         "normalized_outputs": {
             name: str(path.relative_to(case)) for name, path in mask_paths.items()
-        },
+        } | {"combined_labels": str((normalized / "combined_labels.nii.gz").relative_to(case))},
         "timestamp": utc_now(),
     })
     return provenance

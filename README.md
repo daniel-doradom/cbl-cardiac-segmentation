@@ -12,15 +12,19 @@ masks, automated mask QC, provenance, and 3D Slicer-ready files.
 
 ## Canonical mask interface
 
-Every configured backend must produce exactly these downstream names:
+Every configured automatic backend must produce these downstream names:
 
 ```text
 lv_blood_pool.nii.gz
 rv_blood_pool.nii.gz
 myocardium.nii.gz
+combined_labels.nii.gz
 ```
 
-Backend-specific labels do not leave the adapter. For CT, the mapping is:
+`combined_labels.nii.gz` is `uint8`: 0 background, 1 LV blood pool, 2 RV
+blood pool, and 3 myocardium. Individual masks are the editable source of
+truth; the combined file is validated from them. Backend-specific labels do not
+leave the adapter. For CT, the mapping is:
 
 ```text
 heart_ventricle_left  -> lv_blood_pool
@@ -129,7 +133,7 @@ python -m vtseg align-bivme-lge results/local-mri-case \
 python -m vtseg export-matlab-seg \
   results/local-mri-case/segmentation/bivme/lge_aligned/normalized \
   --reference results/local-mri-case/references/lge \
-  --output results/local-mri-case/matlab-bivme-lge \
+  --output results/local-mri-case/manual/matlab \
   --start-slice 1 --end-slice 100 --slices 12
 ```
 
@@ -146,16 +150,17 @@ and matching `Lendo.mat`, `Rendo.mat`, `Epi.mat`, and `myocardium.mat` stacks
 in `seg/`. It orders the stack base-to-apex from the mask extent. `--start-slice`
 and `--end-slice` are one-based positions in that order; `--slices` retains
 both endpoints and distributes intermediate slices as evenly as possible. In MATLAB, run
-`main_bivme_lge_tetmesh` from `my_ECGI_Pipeline/Heart Segmentation/Code/Code_RVOT`
+`vtseg.main_bivme_lge_tetmesh` from the tracked `matlab/` directory (after
+`setup_vtseg` verifies a separately installed iso2mesh)
 with the exported case directory; it opens the imported masks for correction,
 then produces the legacy biventricular mesh outputs. Pass `true` as its third
 argument to launch the manual LGE scar workflow before meshing.
 
-Before meshing, `visualize_bivme_lge_masks(case_directory)` opens an interactive
+Before meshing, `vtseg.visualize_bivme_lge_masks(case_directory)` opens an interactive
 MATLAB review window with image/mask contours, a slice slider, a mask-fill
 toggle, and adjustable fill opacity.
 
-After meshing, `visualize_bivme_lge_results(case_directory)` combines that
+After meshing, `vtseg.visualize_bivme_lge_results(case_directory)` combines that
 interactive review with generated surface/tetrahedral mesh and node-value
 figures. Its optional third argument enables slice-to-mesh animation.
 
@@ -163,6 +168,14 @@ Re-run mask QC after a controlled mask update:
 
 ```bash
 python -m vtseg qc-masks results/local-case
+```
+
+Import MATLAB-corrected masks back into the canonical manual location:
+
+```bash
+python -m vtseg import-matlab-seg results/local-mri-case/manual/matlab \
+  --reference results/local-mri-case/references/lge \
+  --output results/local-mri-case/manual/normalized
 ```
 
 Expected case outputs are:
@@ -174,15 +187,19 @@ results/local-case/
 │   ├── selected_series.json
 │   └── preparation_provenance.json
 ├── volume/image.nii.gz
-├── segmentation/
+├── segmentation/totalsegmentator/
 │   ├── raw/
 │   ├── normalized/
 │   │   ├── lv_blood_pool.nii.gz
 │   │   ├── rv_blood_pool.nii.gz
-│   │   └── myocardium.nii.gz
+│   │   ├── myocardium.nii.gz
+│   │   └── combined_labels.nii.gz
 │   ├── segmentation_metadata.json
 │   └── provenance.json
-└── qc/mask_qc.json
+└── manual/
+    ├── slicer/
+    ├── matlab/{raw,seg,mesh,remesh,global}/
+    └── normalized/
 ```
 
 biv-me outputs are backend-scoped so they can coexist with other experiments:
@@ -197,10 +214,11 @@ results/local-mri-case/
 │   ├── normalized/
 │   │   ├── lv_blood_pool.nii.gz
 │   │   ├── rv_blood_pool.nii.gz
-│   │   └── myocardium.nii.gz
+│   │   ├── myocardium.nii.gz
+│   │   └── combined_labels.nii.gz
 │   ├── segmentation_metadata.json
 │   └── provenance.json
-└── qc/bivme/mask_qc.json
+└── segmentation/bivme/qc/mask_qc.json
 ```
 
 The entire `results/` tree is ignored except its placeholder README. UIDs and

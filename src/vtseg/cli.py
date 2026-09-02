@@ -14,6 +14,7 @@ from vtseg.qc.masks import run_case_qc
 from vtseg.segmentation.bivme import BivMeMRIBackend
 from vtseg.segmentation.bivme_lge import align_bivme_to_lge
 from vtseg.segmentation.matlab_export import export_matlab_case
+from vtseg.segmentation.matlab_import import import_matlab_case
 from vtseg.segmentation.totalsegmentator import TotalSegmentatorCTBackend
 
 
@@ -121,6 +122,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="total slices within the selected range; both endpoints are retained",
     )
+
+    matlab_import_parser = sub.add_parser(
+        "import-matlab-seg",
+        help="import corrected MATLAB mask stacks as canonical manual NIfTI masks",
+    )
+    matlab_import_parser.add_argument("matlab_case_directory", type=Path)
+    matlab_import_parser.add_argument("--reference", required=True, type=Path)
+    matlab_import_parser.add_argument("--output", required=True, type=Path)
     matlab_parser.add_argument("--start-slice", type=int, default=1, help="one-based base-to-apex start")
     matlab_parser.add_argument("--end-slice", type=int, help="one-based base-to-apex end")
     matlab_parser.add_argument(
@@ -181,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(
                 "Segmentation and QC complete: "
-                f"{args.case_directory.resolve() / 'segmentation' / 'normalized'}"
+                f"{args.case_directory.resolve() / 'segmentation' / 'totalsegmentator' / 'normalized'}"
             )
             print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
             return 0
@@ -237,6 +246,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"exported {manifest['slice_count']} slices to {args.output}")
             print(json.dumps({"mask_dimensions": manifest["mask_dimensions"]}, indent=2))
+            return 0
+
+        if args.command == "import-matlab-seg":
+            metadata = import_matlab_case(
+                args.matlab_case_directory,
+                args.reference,
+                args.output,
+                repo_root=_repo_root(),
+            )
+            print(f"imported {metadata['selected_slice_count']} corrected MATLAB slices")
             return 0
 
         if args.command == "qc-masks":

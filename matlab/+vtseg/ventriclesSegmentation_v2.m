@@ -487,8 +487,7 @@ function [Im, h_img] = show_slice_with_masks( ...
         plot_mask_contour(ax, lepi(:, :, k), 'b');
     end
 
-    title(ax, sprintf( ...
-        'Slice %d: LV endo red, RV endo cyan, Epi green, LV epi blue', k));
+    title(ax, sprintf('Slice %d: %s', k, file_name), 'Interpreter', 'none');
     drawnow;
 end
 

@@ -13,7 +13,7 @@ from vtseg.provenance import write_json
 from vtseg.qc.masks import run_case_qc
 from vtseg.segmentation.bivme import BivMeMRIBackend
 from vtseg.segmentation.bivme_lge import align_bivme_to_lge
-from vtseg.segmentation.matlab_export import export_matlab_case
+from vtseg.segmentation.matlab_export import export_matlab_case, preview_matlab_slices
 from vtseg.segmentation.matlab_import import import_matlab_case
 from vtseg.segmentation.totalsegmentator import TotalSegmentatorCTBackend
 
@@ -139,6 +139,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="base-to-apex is inferred from endpoint mask area; reference preserves NIfTI order",
     )
 
+    preview_parser = sub.add_parser(
+        "preview-matlab-slices",
+        help="show base-to-apex MATLAB-export positions without copying DICOM files",
+    )
+    preview_parser.add_argument("mask_directory", type=Path)
+    preview_parser.add_argument("--reference", required=True, type=Path)
+    preview_parser.add_argument(
+        "--slice-order",
+        choices=("base-to-apex", "reference"),
+        default="base-to-apex",
+    )
+
     qc_parser = sub.add_parser("qc-masks", help="recompute QC for normalized masks")
     qc_parser.add_argument("case_directory", type=Path)
 
@@ -246,6 +258,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"exported {manifest['slice_count']} slices to {args.output}")
             print(json.dumps({"mask_dimensions": manifest["mask_dimensions"]}, indent=2))
+            return 0
+
+        if args.command == "preview-matlab-slices":
+            preview = preview_matlab_slices(
+                args.mask_directory,
+                args.reference,
+                slice_order=args.slice_order.replace("-", "_"),
+            )
+            print(json.dumps(preview, indent=2))
             return 0
 
         if args.command == "import-matlab-seg":

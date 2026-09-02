@@ -246,7 +246,7 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     pytest.importorskip("scipy")
     from scipy.io import loadmat
 
-    from vtseg.segmentation.matlab_export import export_matlab_case
+    from vtseg.segmentation.matlab_export import export_matlab_case, preview_matlab_slices
 
     # A prepared reference case, built the way prepare_series builds one.
     dicom_root = tmp_path / "study"
@@ -273,6 +273,16 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     myo[lv > 0] = 0; myo[rv > 0] = 0
     for name, data in (("lv_blood_pool", lv), ("rv_blood_pool", rv), ("myocardium", myo)):
         nib.save(nib.Nifti1Image(data, image.affine), masks / f"{name}.nii.gz")
+
+    preview = preview_matlab_slices(masks, reference)
+    assert preview["slice_order"] == "base_to_apex"
+    assert preview["slice_order_reason"] == "reference_last_endpoint_larger"
+    assert preview["total_positions"] == image.shape[2]
+    assert preview["suggested_start_slice"] == 1
+    assert preview["suggested_end_slice"] == image.shape[2]
+    assert [item["reference_z_index"] for item in preview["slices"]] == list(
+        reversed(range(image.shape[2]))
+    )
 
     out = tmp_path / "matlab-case"
     manifest = export_matlab_case(masks, reference, out, start_slice=1, end_slice=5, slices=3)

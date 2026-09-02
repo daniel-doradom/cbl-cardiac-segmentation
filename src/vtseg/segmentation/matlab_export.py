@@ -82,6 +82,76 @@ def select_slice_indices(
     return [selected[int(position)] for position in positions]
 
 
+def preview_matlab_slices(
+    mask_directory: str | Path,
+    reference_directory: str | Path,
+    *,
+    slice_order: str = "base_to_apex",
+) -> dict[str, Any]:
+    """Describe the base-to-apex positions without writing a MATLAB case.
+
+    Reference z-indices are zero-based, while the positions accepted by
+    ``export-matlab-seg`` are one-based.  DICOM filenames are deliberately not
+    included: the preview is for choosing a geometric range before DICOM files
+    are copied into an ignored MATLAB review case.
+    """
+    masks_path = Path(mask_directory).expanduser().resolve()
+    reference = Path(reference_directory).expanduser().resolve()
+    selection_path = reference / "source" / "selected_series.json"
+    image_path = reference / "volume" / "image.nii.gz"
+    if not selection_path.is_file() or not image_path.is_file():
+        raise NormalizationError(f"reference is not a prepared case: {reference}")
+
+    image = nib.load(str(image_path))
+    volumes: dict[str, np.ndarray] = {}
+    for name in CANONICAL_MASKS:
+        path = masks_path / f"{name}.nii.gz"
+        if not path.is_file():
+            raise NormalizationError(f"missing canonical mask: {path}")
+        mask = nib.load(str(path))
+        if mask.shape != image.shape or not np.allclose(mask.affine, image.affine, atol=1e-4):
+            raise NormalizationError(f"{name} does not share the reference geometry")
+        volumes[name] = np.asanyarray(mask.dataobj) > 0
+
+    epicardium = volumes["lv_blood_pool"] | volumes["rv_blood_pool"] | volumes["myocardium"]
+    for first, second in (
+        ("lv_blood_pool", "rv_blood_pool"),
+        ("lv_blood_pool", "myocardium"),
+        ("rv_blood_pool", "myocardium"),
+    ):
+        overlap = int(np.count_nonzero(volumes[first] & volumes[second]))
+        if overlap:
+            raise NormalizationError(f"{first} and {second} overlap in {overlap} voxels")
+
+    base_to_apex, reason = _base_to_apex_indices(epicardium)
+    if slice_order == "base_to_apex":
+        ordered, order_reason = base_to_apex, reason
+    elif slice_order == "reference":
+        ordered, order_reason = list(range(image.shape[2])), "explicit_reference_order"
+    else:
+        raise NormalizationError("slice order must be 'base_to_apex' or 'reference'")
+
+    slices = [
+        {
+            "position": position,
+            "reference_z_index": index,
+            "foreground_voxels": int(epicardium[:, :, index].sum()),
+        }
+        for position, index in enumerate(ordered, start=1)
+    ]
+    nonempty = [item["position"] for item in slices if item["foreground_voxels"] > 0]
+    if not nonempty:
+        raise NormalizationError("masks are empty; nothing to export")
+    return {
+        "slice_order": slice_order,
+        "slice_order_reason": order_reason,
+        "total_positions": len(slices),
+        "suggested_start_slice": nonempty[0],
+        "suggested_end_slice": nonempty[-1],
+        "slices": slices,
+    }
+
+
 def export_matlab_case(
     mask_directory: str | Path,
     reference_directory: str | Path,

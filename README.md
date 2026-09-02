@@ -207,7 +207,17 @@ python -m vtseg align-bivme-lge "$case" --dicom-directory "$study"
 
 In 3D Slicer, load `references/lge/volume/image.nii.gz` with the four files in
 `segmentation/bivme/lge_aligned/normalized/`. Review alignment and masks before
-choosing the base-to-apex slice range for MATLAB export:
+choosing the base-to-apex slice range for MATLAB export. Preview the one-based
+export positions first; the suggested range excludes empty slices, and each
+entry maps an export position to a zero-based LGE reference index:
+
+```bash
+python -m vtseg preview-matlab-slices \
+  "$case/segmentation/bivme/lge_aligned/normalized" \
+  --reference "$case/references/lge"
+```
+
+Then export the reviewed range:
 
 ```bash
 python -m vtseg export-matlab-seg \

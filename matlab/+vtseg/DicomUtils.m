@@ -65,15 +65,15 @@ classdef DicomUtils
 
 
                 dicoms(count).sliceLocation = ...
-                    DicomUtils.getNumericField(info, 'SliceLocation');
+                    vtseg.DicomUtils.getNumericField(info, 'SliceLocation');
 
 
                 dicoms(count).sliceThickness = ...
-                    DicomUtils.getNumericField(info, 'SliceThickness');
+                    vtseg.DicomUtils.getNumericField(info, 'SliceThickness');
 
 
                 dicoms(count).instanceNumber = ...
-                    DicomUtils.getNumericField(info, 'InstanceNumber');
+                    vtseg.DicomUtils.getNumericField(info, 'InstanceNumber');
 
 
                 imgs_cell{count} = img;
@@ -91,7 +91,7 @@ classdef DicomUtils
 
 
             % Sort structs exactly as before
-            [dicoms, sort_idx] = DicomUtils.sortDicomFiles(dicoms);
+            [dicoms, sort_idx] = vtseg.DicomUtils.sortDicomFiles(dicoms);
 
 
             % Apply the same sorting to images
@@ -363,12 +363,12 @@ classdef DicomUtils
 
                 switch user_choice
                     case 'Save'
-                        DicomUtils.save_selected_dicoms( ...
+                        vtseg.DicomUtils.save_selected_dicoms( ...
                             selected_dicoms, output_dir);
                         return;
 
                     case 'Review Again'
-                        DicomUtils.plot_selected_dicoms( ...
+                        vtseg.DicomUtils.plot_selected_dicoms( ...
                             selected_dicoms, 0.5);
 
                     otherwise
@@ -515,7 +515,7 @@ classdef DicomUtils
 
             for k = 1:number_of_slices
                 info = dicominfo(dicoms(k).path);
-                image = DicomUtils.applyDicomRescale(double(dicom_images(:,:,k)), info);
+                image = vtseg.DicomUtils.applyDicomRescale(double(dicom_images(:,:,k)), info);
 
 
                 image_position = double(info.ImagePositionPatient(:));
@@ -575,7 +575,7 @@ classdef DicomUtils
                 info = dicominfo(dicoms(k).path);
 
                 image = double(dicom_images(:,:,k));
-                image = DicomUtils.applyDicomRescale(image, info);
+                image = vtseg.DicomUtils.applyDicomRescale(image, info);
 
                 image_position = double(info.ImagePositionPatient(:)).';
                 orientation = double(info.ImageOrientationPatient(:));
@@ -693,8 +693,8 @@ classdef DicomUtils
             % plot slices
             for k = 1:numel(dicoms)
                 info = dicominfo(dicoms(k).path);
-                image = DicomUtils.applyDicomRescale(double(dicom_images(:,:,k)), info);
-                [X, Y, Z] = DicomUtils.dicomPlaneCoordinates(info, size(image));
+                image = vtseg.DicomUtils.applyDicomRescale(double(dicom_images(:,:,k)), info);
+                [X, Y, Z] = vtseg.DicomUtils.dicomPlaneCoordinates(info, size(image));
                 surf(X, Y, Z, image, 'EdgeColor', 'none', 'FaceAlpha', slice_alpha);
             end
 
@@ -715,8 +715,8 @@ classdef DicomUtils
                 clf;
 
                 info = dicominfo(dicoms(k).path);
-                image = DicomUtils.applyDicomRescale(double(dicom_images(:,:,k)), info);
-                [X, Y, Z, image_position, plane_normal] = DicomUtils.dicomPlaneCoordinates(info, size(image));
+                image = vtseg.DicomUtils.applyDicomRescale(double(dicom_images(:,:,k)), info);
+                [X, Y, Z, image_position, plane_normal] = vtseg.DicomUtils.dicomPlaneCoordinates(info, size(image));
 
 
                 distance_to_plane = (tet_nodes - image_position.') * plane_normal;

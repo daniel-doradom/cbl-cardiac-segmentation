@@ -525,7 +525,7 @@ end
 function plot_mask_contour(ax, mask, color)
     mask = logical(mask);
 
-    if any(mask(:))
+    if any(mask(:)) && any(~mask(:))
         contour(ax, mask, [0.5 0.5], color, 'LineWidth', 1.5);
     end
 end

@@ -127,8 +127,11 @@ refresh_view();
         end
 
         for index = 1:numel(masks)
-            contour(ax, masks{index}(row_range, column_range, slice), [0.5 0.5], ...
-                'Color', colors(index, :), 'LineWidth', 1.4);
+            current_mask = masks{index}(row_range, column_range, slice);
+            if any(current_mask(:)) && any(~current_mask(:))
+                contour(ax, current_mask, [0.5 0.5], ...
+                    'Color', colors(index, :), 'LineWidth', 1.4);
+            end
         end
         axis(ax, 'image');
         axis(ax, 'off');
@@ -162,8 +165,11 @@ imshow(images(:, :, reference_slice), gs_range, 'Parent', selection_axes);
 colormap(selection_axes, gray(256));
 hold(selection_axes, 'on');
 for index = 1:numel(masks)
-    contour(selection_axes, masks{index}(:, :, reference_slice), [0.5 0.5], ...
-        'Color', colors(index, :), 'LineWidth', 1.4);
+    current_mask = masks{index}(:, :, reference_slice);
+    if any(current_mask(:)) && any(~current_mask(:))
+        contour(selection_axes, current_mask, [0.5 0.5], ...
+            'Color', colors(index, :), 'LineWidth', 1.4);
+    end
 end
 title(selection_axes, sprintf(['Draw the review crop on slice %d, then double-click inside it. ' ...
     'The crop affects display only.'], reference_slice));

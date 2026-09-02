@@ -226,6 +226,23 @@ python -m vtseg export-matlab-seg \
   --start-slice START --end-slice END --slices COUNT
 ```
 
+`--start-slice` and `--end-slice` use the one-based **source slice** numbers
+shown during the base-to-apex MATLAB review. Use those reviewed source numbers
+directly with the default slice order. For example, retaining source slice 25
+through source slice 100 as 20 evenly spaced MATLAB slices is:
+
+```bash
+python -m vtseg export-matlab-seg \
+  "$case/segmentation/bivme/lge_aligned/normalized" \
+  --reference "$case/references/lge" \
+  --output "$case/manual/matlab-source-025-100-20slices" \
+  --start-slice 25 --end-slice 100 --slices 20
+```
+
+This retains both endpoints. Do not add `--slice-order reference` when
+selecting reviewed source slice numbers; that option instead selects by the
+prepared NIfTI reference-volume order.
+
 In MATLAB, add the repository `matlab/` folder, run `setup_vtseg`, then run
 `vtseg.main_bivme_lge_tetmesh` on `$case/manual/matlab`. After correction and
 mesh generation, use `import-matlab-seg` above to create canonical manual NIfTI

@@ -116,6 +116,31 @@ selection among competing LGE stacks. The biv-me adapter stages only instances
 from the prepared cine study before view selection, so unrelated studies in the
 same Diagnostics directory cannot be mixed into fitting.
 
+### When automatic view selection misses 4-chamber cine
+
+Biv-me fitting requires SAX plus a 4-chamber cine view to establish tricuspid
+valve landmarks. If `raw/execution.log` reports that no 4-chamber view was
+selected or no tricuspid valve points were found, do not proceed to LGE
+alignment and do not expect changing `--frame` to fix it. The view-selection
+step precedes per-frame fitting.
+
+Use biv-me's interactive adaptive mode from a graphical session (for example,
+an authorized X-forwarded SSH session), so it opens a review window only when
+views are missing or uncertain. Confirm the correct 4-chamber cine assignment,
+then let the pipeline continue. Do not use adaptive/manual mode in a headless
+session with no display. Preserve the failed attempt and use a new case output:
+
+```bash
+case=results/case-mri-adaptive
+PYTHONPATH=src python -m vtseg prepare-series "$study" \
+  --series "$cineSeriesUid" --frame "$frame" --output "$case"
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
+  --dicom-directory "$study" --device gpu --view-correction adaptive
+```
+
+Run `align-bivme-lge` only after adaptive biv-me fitting reports successful
+segmentation, rasterization, and QC.
+
 The paths to review in Slicer are:
 
 ```text

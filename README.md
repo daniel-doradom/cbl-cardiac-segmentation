@@ -178,6 +178,49 @@ python -m vtseg import-matlab-seg results/local-mri-case/manual/matlab \
   --output results/local-mri-case/manual/normalized
 ```
 
+### Fresh Cine-MRI to Manual Review
+
+Store authorized DICOM studies in ignored `data/diagnostics/` storage (a local
+symlink is supported); do not add imaging data to Git. For each case, use the
+full original cardiac-MR Diagnostics directory, not a Weasis MPR export. The
+study must include multi-view cine bSSFP/FIESTA acquisitions for biv-me and a
+native LGE/MDE acquisition for alignment.
+
+```bash
+study=data/diagnostics/CASE/Diagnostics
+case=results/case-mri
+
+# Write an ignored inventory, review it locally, and select an explicit cine
+# short-axis series UID and temporal frame.
+python -m vtseg inspect-dicom "$study" --json "$case/source/dicom_inventory.json"
+python -m vtseg prepare-series "$study" --series SERIES_INSTANCE_UID --frame FRAME \
+  --output "$case"
+
+# Run only after confirming this shell owns the selected GPU allocation.
+CUDA_VISIBLE_DEVICES=GPU_ID python -m vtseg check-bivme-backend
+CUDA_VISIBLE_DEVICES=GPU_ID python -m vtseg segment-mri-bivme "$case" \
+  --dicom-directory "$study" --device gpu
+
+# Selects native LGE/MDE, phase-matches cine geometry, and writes LGE-space masks.
+python -m vtseg align-bivme-lge "$case" --dicom-directory "$study"
+```
+
+In 3D Slicer, load `references/lge/volume/image.nii.gz` with the four files in
+`segmentation/bivme/lge_aligned/normalized/`. Review alignment and masks before
+choosing the base-to-apex slice range for MATLAB export:
+
+```bash
+python -m vtseg export-matlab-seg \
+  "$case/segmentation/bivme/lge_aligned/normalized" \
+  --reference "$case/references/lge" --output "$case/manual/matlab" \
+  --start-slice START --end-slice END --slices COUNT
+```
+
+In MATLAB, add the repository `matlab/` folder, run `setup_vtseg`, then run
+`vtseg.main_bivme_lge_tetmesh` on `$case/manual/matlab`. After correction and
+mesh generation, use `import-matlab-seg` above to create canonical manual NIfTI
+masks and QC.
+
 Expected case outputs are:
 
 ```text

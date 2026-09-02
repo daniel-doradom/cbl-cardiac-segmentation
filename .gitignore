@@ -18,6 +18,7 @@ DICOMDIR
 
 # Legacy local reference archive; reuse selectively through maintained source files.
 my_ECGI_Pipeline/
+.local-archive/
 
 # Patient-specific configuration, metadata, reports, logs, and temporary files
 configs/local-*

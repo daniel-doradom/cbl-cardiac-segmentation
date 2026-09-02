@@ -105,10 +105,23 @@ def validate_provenance(record: dict[str, Any]) -> None:
         raise ValueError("provenance warnings and errors must be lists")
 
 
+def _json_default(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "tolist"):
+        return value.tolist()
+    if hasattr(value, "item"):
+        return value.item()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
+
 def write_json(path: str | Path, value: Any) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    destination.write_text(
+        json.dumps(value, default=_json_default, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_provenance(path: str | Path, record: dict[str, Any]) -> None:

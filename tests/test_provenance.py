@@ -1,8 +1,10 @@
 import json
+from pathlib import Path
 
+import numpy as np
 import pytest
 
-from vtseg.provenance import base_provenance, validate_provenance, write_provenance
+from vtseg.provenance import base_provenance, validate_provenance, write_json, write_provenance
 
 
 def test_base_provenance_has_required_reproducibility_fields(tmp_path):
@@ -31,3 +33,19 @@ def test_serialization_is_stably_sorted(tmp_path):
     write_provenance(path, record)
     lines = path.read_text().splitlines()
     assert lines[1].lstrip().startswith('"acquisition_characterization"')
+
+
+def test_json_serializes_numpy_values_and_paths(tmp_path):
+    path = tmp_path / "values.json"
+    write_json(
+        path,
+        {
+            "spacing": [np.float32(1.25)],
+            "affine": np.array([[1, 0], [0, 1]], dtype=np.float32),
+            "output": Path("segmentation/normalized/myocardium.nii.gz"),
+        },
+    )
+    loaded = json.loads(path.read_text())
+    assert loaded["spacing"] == [1.25]
+    assert loaded["affine"] == [[1.0, 0.0], [0.0, 1.0]]
+    assert loaded["output"] == "segmentation/normalized/myocardium.nii.gz"

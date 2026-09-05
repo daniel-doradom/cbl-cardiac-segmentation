@@ -29,6 +29,10 @@ from vtseg.segmentation.base import BackendStatus, SegmentationBackend
 
 TASK = "cine_cmr_biventricular_mesh"
 CASE_ALIAS = "case"
+VIEW_PREDICTION_COLUMNS = (
+    "Series Number", "Series Description", "Slice Location",
+    "Predicted View", "Vote Share", "Confidence", "Frames Per Slice",
+)
 MODEL_TERMS_WARNING = (
     "biv-me code is Apache-2.0, but the separate public model repository does not "
     "currently declare model-weight license terms; verify terms for the intended use"
@@ -185,6 +189,7 @@ def build_config(
     workers: int,
     generate_plots: bool,
     view_selection: str = "default",
+    ed_frame: int = 0,
 ) -> str:
     return f"""title = "vtseg biv-me adapter"
 version = "1.2.0"
@@ -233,7 +238,7 @@ si_suffix = ""
 
 [breathhold_correction]
 shifting = "derived_from_ed"
-ed_frame = 0
+ed_frame = {ed_frame}
 
 [gp_processing]
 sampling = 1
@@ -329,6 +334,8 @@ class BivMeMRIBackend(SegmentationBackend):
         correct_mode: str = "automatic",
         workers: int = 4,
         generate_plots: bool = False,
+        ed_frame: int = 0,
+        view_predictions: Path | None = None,
         repo_root: Path | None = None,
     ) -> dict[str, Any]:
         case = case_dir.resolve()
@@ -357,6 +364,49 @@ class BivMeMRIBackend(SegmentationBackend):
             raise SeriesSelectionError("biv-me device must be 'gpu' or 'cpu'")
         if correct_mode not in {"automatic", "adaptive", "manual"}:
             raise SeriesSelectionError("invalid biv-me view-correction mode")
+        ed_frame = int(ed_frame)
+        if ed_frame < 0:
+            raise SeriesSelectionError("biv-me ed-frame must be non-negative")
+        supplied_views: Path | None = None
+        if view_predictions is not None:
+            supplied_views = Path(view_predictions).expanduser().resolve()
+            if not supplied_views.is_file():
+                raise SeriesSelectionError(
+                    f"biv-me view-predictions file not found: {supplied_views}"
+                )
+            rows = supplied_views.read_text(encoding="utf-8").splitlines()
+            if not rows:
+                raise SeriesSelectionError("biv-me view-predictions file is empty")
+            columns = [column.strip() for column in rows[0].split(",")]
+            missing = [name for name in VIEW_PREDICTION_COLUMNS if name not in columns]
+            if missing:
+                raise SeriesSelectionError(
+                    "biv-me view-predictions file is missing required columns: "
+                    + ", ".join(missing)
+                )
+            if len(rows) < 2:
+                raise SeriesSelectionError(
+                    "biv-me view-predictions file has a header but no series rows"
+                )
+        available_frames = summary.get("inferred_temporal_frames")
+        bounded = (
+            bool(summary.get("temporal_inference_defensible"))
+            and isinstance(available_frames, int)
+            and not isinstance(available_frames, bool)
+            and available_frames > 0
+        )
+        ed_frame_bound_warning: str | None = None
+        if bounded:
+            if ed_frame >= available_frames:
+                raise SeriesSelectionError(
+                    f"biv-me ed-frame {ed_frame} is out of range for a cine series with "
+                    f"{available_frames} temporal frames; valid values are 0-{available_frames - 1}"
+                )
+        elif ed_frame > 0:
+            ed_frame_bound_warning = (
+                f"could not bound ed-frame {ed_frame}: the prepared series reports no defensible "
+                "temporal frame count, so an out-of-range phase would fail inside biv-me fitting"
+            )
 
         backend_dir = case / "segmentation" / "bivme"
         raw_dir = backend_dir / "raw"
@@ -396,9 +446,17 @@ class BivMeMRIBackend(SegmentationBackend):
             for record in study_instances
             if hasattr(record.dataset, "ImageOrientationPatient")
         }
-        view_selection = "image-only" if len(orientations) == 1 else "default"
+        view_selection = "load" if supplied_views is not None else (
+            "image-only" if len(orientations) == 1 else "default"
+        )
 
         raw_dir.mkdir(parents=True, exist_ok=False)
+        if supplied_views is not None:
+            # biv-me's "load" branch reads
+            # states/<batch_ID>/<case>/<analyst_id>/view_predictions.csv
+            states_dir = raw_dir / "states" / "run" / CASE_ALIAS / "vtseg"
+            states_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(supplied_views, states_dir / "view_predictions.csv")
         log_path = raw_dir / "execution.log"
         with tempfile.TemporaryDirectory(prefix="vtseg-bivme-") as temporary:
             temporary_root = Path(temporary)
@@ -419,6 +477,7 @@ class BivMeMRIBackend(SegmentationBackend):
                     workers=workers,
                     generate_plots=generate_plots,
                     view_selection=view_selection,
+                    ed_frame=ed_frame,
                 ),
                 encoding="utf-8",
             )
@@ -499,6 +558,11 @@ class BivMeMRIBackend(SegmentationBackend):
         warnings.append(
             "adapter disabled biv-me's ambiguous 'loc' substring exclusion for cine ingestion"
         )
+        if supplied_views is not None:
+            warnings.append(
+                "view predictions were supplied explicitly; biv-me's own view "
+                "classification was bypassed"
+            )
         if view_selection == "image-only":
             warnings.append(
                 "single-orientation cine input used biv-me image-only view selection"
@@ -506,6 +570,8 @@ class BivMeMRIBackend(SegmentationBackend):
         if any(count > 0 for count in raster_report.get("mesh_open_edges", {}).values()):
             warnings.append("one or more biv-me surfaces report open edges; inspect the rasterized masks")
         warnings.append(MODEL_TERMS_WARNING)
+        if ed_frame_bound_warning is not None:
+            warnings.append(ed_frame_bound_warning)
         warnings = sorted(set(warnings))
 
         source_image = nib.load(str(image_path))
@@ -536,6 +602,8 @@ class BivMeMRIBackend(SegmentationBackend):
             model_task=TASK,
             model_options={
                 "frame": selected_frame,
+                "ed_frame": ed_frame,
+                "view_predictions": str(supplied_views) if supplied_views else None,
                 "view_correction": correct_mode,
                 "view_selection": view_selection,
                 "cine_filter_compatibility": "ambiguous loc exclusion disabled",
@@ -558,6 +626,7 @@ class BivMeMRIBackend(SegmentationBackend):
             "task": TASK,
             "device": device,
             "frame": selected_frame,
+            "ed_frame": ed_frame,
             "view_selection": view_selection,
             "native_outputs_preserved": True,
             "normalized_outputs": {

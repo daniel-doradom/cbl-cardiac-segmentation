@@ -44,6 +44,106 @@ def test_bivme_config_supports_image_only_view_selection(tmp_path):
     assert 'option = "image-only"' in config
 
 
+def test_bivme_config_defaults_ed_frame_to_zero(tmp_path):
+    config = build_config(
+        input_root=tmp_path / "input",
+        raw_directory=tmp_path / "raw",
+        correct_mode="automatic",
+        workers=2,
+        generate_plots=False,
+    )
+    assert "ed_frame = 0" in config
+
+
+def test_bivme_config_accepts_an_explicit_ed_frame(tmp_path):
+    config = build_config(
+        input_root=tmp_path / "input",
+        raw_directory=tmp_path / "raw",
+        correct_mode="adaptive",
+        workers=2,
+        generate_plots=False,
+        ed_frame=1,
+    )
+    assert "ed_frame = 1" in config
+    # breath-hold correction stays enabled; only its reference phase moves
+    assert 'shifting = "derived_from_ed"' in config
+
+
+def _prepared_cine_case(tmp_path, **characterization):
+    case = tmp_path / "case"
+    (case / "volume").mkdir(parents=True)
+    (case / "source").mkdir(parents=True)
+    (case / "volume" / "image.nii.gz").write_bytes(b"")
+    (case / "source" / "selected_series.json").write_text(
+        json.dumps({
+            "series_characterization": {"modality": "MR", **characterization},
+            "selected_temporal_frame": {"frame": 0},
+        }),
+        encoding="utf-8",
+    )
+    return case
+
+
+def test_bivme_rejects_a_negative_ed_frame(tmp_path):
+    case = _prepared_cine_case(tmp_path)
+    with pytest.raises(SeriesSelectionError, match="ed-frame must be non-negative"):
+        BivMeMRIBackend().run(
+            case,
+            dicom_directory=tmp_path / "dicom",
+            frame=0,
+            ed_frame=-1,
+        )
+
+
+def test_bivme_rejects_an_ed_frame_past_the_last_phase(tmp_path):
+    case = _prepared_cine_case(
+        tmp_path,
+        inferred_temporal_frames=20,
+        temporal_inference_defensible=True,
+    )
+    with pytest.raises(SeriesSelectionError, match="valid values are 0-19"):
+        BivMeMRIBackend().run(
+            case,
+            dicom_directory=tmp_path / "dicom",
+            frame=0,
+            ed_frame=20,
+        )
+
+
+def test_bivme_accepts_the_last_phase_as_ed_frame(tmp_path):
+    case = _prepared_cine_case(
+        tmp_path,
+        inferred_temporal_frames=20,
+        temporal_inference_defensible=True,
+    )
+    # the bound must not reject the final valid phase; failure comes later
+    with pytest.raises(Exception) as excinfo:
+        BivMeMRIBackend().run(
+            case,
+            dicom_directory=tmp_path / "dicom",
+            frame=0,
+            ed_frame=19,
+        )
+    assert "ed-frame" not in str(excinfo.value)
+
+
+def test_bivme_does_not_bound_ed_frame_without_defensible_frame_count(tmp_path):
+    case = _prepared_cine_case(
+        tmp_path,
+        inferred_temporal_frames=20,
+        temporal_inference_defensible=False,
+    )
+    # an indefensible frame count is not a licence to reject; it warns at run time
+    with pytest.raises(Exception) as excinfo:
+        BivMeMRIBackend().run(
+            case,
+            dicom_directory=tmp_path / "dicom",
+            frame=0,
+            ed_frame=99,
+        )
+    assert "out of range" not in str(excinfo.value)
+
+
 def test_bivme_stages_only_the_prepared_study_instances():
     first = SimpleNamespace(study_uid="prepared-study")
     second = SimpleNamespace(study_uid="other-study")

@@ -97,6 +97,26 @@ def build_parser() -> argparse.ArgumentParser:
         default="automatic",
         choices=("automatic", "adaptive", "manual"),
     )
+    bivme_parser.add_argument(
+        "--ed-frame",
+        type=int,
+        default=0,
+        help=(
+            "temporal phase biv-me anchors breath-hold correction to (default 0). "
+            "Raise it when raw/execution.log reports no tricuspid valve points at "
+            "the ED phase but later phases are fine."
+        ),
+    )
+    bivme_parser.add_argument(
+        "--view-predictions",
+        type=Path,
+        help=(
+            "CSV of view assignments to use instead of biv-me's own classification, "
+            "in the format of raw/processing/run/case/view-classification/"
+            "view_predictions.csv. Bypasses the correction GUI, so a headless "
+            "session can reproduce a corrected view assignment."
+        ),
+    )
     bivme_parser.add_argument("--workers", type=int, default=4)
     bivme_parser.add_argument("--plots", action="store_true")
 
@@ -225,6 +245,8 @@ def main(argv: list[str] | None = None) -> int:
                 device=args.device,
                 frame=args.frame,
                 correct_mode=args.view_correction,
+                ed_frame=args.ed_frame,
+                view_predictions=args.view_predictions,
                 workers=args.workers,
                 generate_plots=args.plots,
                 repo_root=_repo_root(),

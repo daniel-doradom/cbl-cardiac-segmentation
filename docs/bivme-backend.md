@@ -97,6 +97,15 @@ patient coordinate system, registers cine to LGE with rigid Mattes mutual
 information, transforms the selected LPS meshes, and rasterizes them directly
 on the native LGE grid.
 
+The registration is a gradient descent whose first step is 0.5 mm and which
+ends once the metric has been flat for 30 iterations. Because the two series
+share a frame of reference, the true correction is breath-hold sized, so the
+search is stopped as soon as the translation exceeds 25 mm. A result that was
+stopped, that moved the image centre more than 25 mm, or that overlaps its own
+DICOM placement below Dice 0.50 is discarded and the DICOM placement used
+instead; `registration.json` keeps the attempt, and the alignment warns that no
+breath-hold correction was applied.
+
 Unlike `segment-bivme`, this stage does not shell out to the biv-me
 interpreter: it performs the registration and the mesh rasterization in-process.
 It therefore needs SimpleITK and PyVista in whichever environment runs it. Either

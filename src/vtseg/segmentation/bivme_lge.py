@@ -43,6 +43,13 @@ MESH_NAMES = {
 # failures move it 69-95 mm with Dice 0.00-0.23. These gates sit in the gap.
 MAX_REGISTRATION_SHIFT_MM = 25.0
 MIN_REGISTRATION_DICE = 0.50
+# Gradient descent: the learning rate is estimated once per resolution level so
+# the first step moves at most REGISTRATION_MAX_STEP_MM, and the level ends once
+# the metric has been flat over REGISTRATION_CONVERGENCE_WINDOW iterations.
+REGISTRATION_MAX_STEP_MM = 0.5
+REGISTRATION_ITERATIONS_PER_LEVEL = 500
+REGISTRATION_CONVERGENCE_WINDOW = 30
+REGISTRATION_CONVERGENCE_MINIMUM = 1e-7
 
 
 def _series_groups(inventory: Inventory) -> dict[str, list[Any]]:
@@ -214,12 +221,17 @@ def _registration_method(sitk: Any, initial: Any, *, use_masks: bool, fixed_mask
         method.SetMetricFixedMask(fixed_mask)
         method.SetMetricMovingMask(moving_mask)
     method.SetInterpolator(sitk.sitkLinear)
-    method.SetOptimizerAsRegularStepGradientDescent(
+    # A regular-step descent never converged here: it used its whole iteration
+    # budget on every case and on three of six marched 80-110 mm away. Plain
+    # gradient descent with a convergence window stops where the metric goes
+    # flat, which on those cases is a breath-hold-sized shift when one exists.
+    method.SetOptimizerAsGradientDescent(
         learningRate=1.0,
-        minStep=1e-4,
-        numberOfIterations=250,
-        relaxationFactor=0.5,
-        gradientMagnitudeTolerance=1e-8,
+        numberOfIterations=REGISTRATION_ITERATIONS_PER_LEVEL,
+        convergenceMinimumValue=REGISTRATION_CONVERGENCE_MINIMUM,
+        convergenceWindowSize=REGISTRATION_CONVERGENCE_WINDOW,
+        estimateLearningRate=method.Once,
+        maximumStepSizeInPhysicalUnits=REGISTRATION_MAX_STEP_MM,
     )
     method.SetOptimizerScalesFromPhysicalShift()
     method.SetShrinkFactorsPerLevel([4, 2, 1])
@@ -227,6 +239,33 @@ def _registration_method(sitk: Any, initial: Any, *, use_masks: bool, fixed_mask
     method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     method.SetInitialTransform(initial, inPlace=True)
     return method
+
+
+def _bound_translation(method: Any, sitk: Any, bound_mm: float) -> dict[str, Any]:
+    """Stop the search as soon as the translation leaves a sphere of ``bound_mm``.
+
+    Cine and LGE share a frame of reference, so a rigid correction larger than a
+    breath hold cannot be right. Stopping at the bound keeps the optimizer inside
+    the plausible region instead of letting it run away to be caught afterwards.
+    SimpleITK's stop ends the current resolution level; later levels start
+    outside the bound and stop again at their first iteration.
+
+    The transform parameters cannot be clamped from a callback: SimpleITK copies
+    a transform on write while the registration still holds it, so a clamp would
+    silently act on a detached copy.
+    """
+    state: dict[str, Any] = {"hit": False, "max_translation_mm": 0.0}
+
+    def _watch() -> None:
+        parameters = method.GetOptimizerPosition()
+        translation = float(np.linalg.norm(parameters[3:6]))
+        state["max_translation_mm"] = max(state["max_translation_mm"], translation)
+        if translation > bound_mm:
+            state["hit"] = True
+            method.StopRegistration()
+
+    method.AddCommand(sitk.sitkIterationEvent, _watch)
+    return state
 
 
 def register_cine_to_lge(
@@ -249,23 +288,23 @@ def register_cine_to_lge(
     gate_mask = _mask_union(moving_mask_directory, sitk, dilate_mm=0.0)
     fixed, moving = fixed_full, moving_full
 
+    def _attempt(use_masks: bool) -> tuple[Any, Any, dict[str, Any]]:
+        initial = _identity_rigid(fixed, sitk)
+        method = _registration_method(
+            sitk, initial, use_masks=use_masks, fixed_mask=fixed_mask, moving_mask=moving_mask
+        )
+        bound = _bound_translation(method, sitk, MAX_REGISTRATION_SHIFT_MM)
+        return method.Execute(fixed, moving), method, bound
+
     used_masks = True
     fallback_reason = None
-    initial = _identity_rigid(fixed, sitk)
-    method = _registration_method(
-        sitk, initial, use_masks=True, fixed_mask=fixed_mask, moving_mask=moving_mask
-    )
     try:
-        fixed_to_moving = method.Execute(fixed, moving)
+        fixed_to_moving, method, bound = _attempt(use_masks=True)
     except RuntimeError as exc:
         used_masks = False
         fallback_reason = type(exc).__name__
-        initial = _identity_rigid(fixed, sitk)
-        method = _registration_method(
-            sitk, initial, use_masks=False, fixed_mask=fixed_mask, moving_mask=moving_mask
-        )
         try:
-            fixed_to_moving = method.Execute(fixed, moving)
+            fixed_to_moving, method, bound = _attempt(use_masks=False)
         except RuntimeError as fallback_exc:
             raise RegistrationError("rigid cine-to-LGE registration failed") from fallback_exc
 
@@ -286,6 +325,11 @@ def register_cine_to_lge(
     # share a FrameOfReferenceUID, so the DICOM placement is a valid answer and
     # a safer one than a mis-registration.
     rejected_reasons = []
+    if bound["hit"]:
+        rejected_reasons.append(
+            f"translation reached the {MAX_REGISTRATION_SHIFT_MM:.0f} mm bound and the "
+            "search was stopped"
+        )
     if center_displacement > MAX_REGISTRATION_SHIFT_MM:
         rejected_reasons.append(
             f"center displacement {center_displacement:.1f} mm exceeds "
@@ -327,7 +371,17 @@ def register_cine_to_lge(
         "moved_mask_dice": moved_dice,
         "max_shift_mm": MAX_REGISTRATION_SHIFT_MM,
         "min_dice": MIN_REGISTRATION_DICE,
-        "schema_version": 1,
+        "translation_bound_mm": MAX_REGISTRATION_SHIFT_MM,
+        "translation_bound_hit": bound["hit"],
+        "max_translation_mm": bound["max_translation_mm"],
+        "optimizer": {
+            "name": "gradient descent, learning rate estimated once per level",
+            "max_step_mm": REGISTRATION_MAX_STEP_MM,
+            "iterations_per_level": REGISTRATION_ITERATIONS_PER_LEVEL,
+            "convergence_window": REGISTRATION_CONVERGENCE_WINDOW,
+            "convergence_minimum": REGISTRATION_CONVERGENCE_MINIMUM,
+        },
+        "schema_version": 2,
         "method": "rigid Euler3D, Mattes mutual information",
         "fixed_image": "native LGE/MDE",
         "moving_image": "phase-matched cine bSSFP",

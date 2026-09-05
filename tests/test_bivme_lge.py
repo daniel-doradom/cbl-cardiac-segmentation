@@ -119,6 +119,85 @@ def test_rigid_registration_writes_invertible_transforms(tmp_path):
     assert (tmp_path / "registration" / "moving_cine_to_fixed_lge.tfm").is_file()
     assert (tmp_path / "registration" / "cine_in_lge.nii.gz").is_file()
     assert report["center_displacement_mm"] < 1.0
+    assert report["registration_rejected"] is False
+    assert report["translation_bound_hit"] is False
+
+
+def _shifted_blob_case(tmp_path, shift_mm):
+    """An elongated blob with three sharp markers, and the same blob moved by
+    ``shift_mm`` along x, on 1 mm voxels. The body gives the metric a pull over
+    tens of millimetres; the markers pin all six rigid degrees of freedom."""
+    shape = (64, 64, 64)
+    grid = np.mgrid[: shape[0], : shape[1], : shape[2]].astype(float)
+    rng = np.random.default_rng(7)
+    offsets = rng.uniform(-1, 1, size=(3, 3)) * np.array([14.0, 8.0, 8.0])
+    amplitudes = rng.uniform(0.5, 1.0, size=3)
+
+    def pattern(x_center):
+        center = np.array([x_center, 32.0, 32.0])
+        body = np.exp(
+            -((grid[0] - center[0]) ** 2 / (2 * 25.0**2)
+              + (grid[1] - center[1]) ** 2 / (2 * 12.0**2)
+              + (grid[2] - center[2]) ** 2 / (2 * 12.0**2))
+        )
+        markers = sum(
+            amplitude * np.exp(
+                -sum((grid[axis] - (center[axis] + offset[axis])) ** 2 for axis in range(3))
+                / (2 * 3.0**2)
+            )
+            for amplitude, offset in zip(amplitudes, offsets)
+        )
+        return body + markers
+
+    fixed_data = pattern(18.0)
+    moving_data = pattern(18.0 + shift_mm)
+    fixed = tmp_path / "fixed.nii.gz"
+    moving = tmp_path / "moving.nii.gz"
+    nib.save(nib.Nifti1Image(fixed_data.astype(np.float32), np.eye(4)), fixed)
+    nib.save(nib.Nifti1Image(moving_data.astype(np.float32), np.eye(4)), moving)
+    fixed_masks = tmp_path / "fixed-masks"
+    moving_masks = tmp_path / "moving-masks"
+    for directory, data in ((fixed_masks, fixed_data), (moving_masks, moving_data)):
+        directory.mkdir()
+        mask = (data > 0.2).astype(np.uint8)
+        for name in ("lv_blood_pool", "rv_blood_pool", "myocardium"):
+            nib.save(nib.Nifti1Image(mask, np.eye(4)), directory / f"{name}.nii.gz")
+    return fixed, moving, fixed_masks, moving_masks
+
+
+def test_registration_recovers_a_breath_hold_sized_shift(tmp_path):
+    pytest.importorskip("SimpleITK")
+    fixed, moving, fixed_masks, moving_masks = _shifted_blob_case(tmp_path, shift_mm=6.0)
+    _, report = register_cine_to_lge(
+        fixed,
+        moving,
+        fixed_mask_directory=fixed_masks,
+        moving_mask_directory=moving_masks,
+        output_directory=tmp_path / "registration",
+    )
+    assert report["registration_rejected"] is False
+    assert report["translation_bound_hit"] is False
+    assert 4.0 < report["center_displacement_mm"] < 9.0
+
+
+def test_registration_stops_at_the_translation_bound(tmp_path):
+    sitk = pytest.importorskip("SimpleITK")
+    fixed, moving, fixed_masks, moving_masks = _shifted_blob_case(tmp_path, shift_mm=36.0)
+    _, report = register_cine_to_lge(
+        fixed,
+        moving,
+        fixed_mask_directory=fixed_masks,
+        moving_mask_directory=moving_masks,
+        output_directory=tmp_path / "registration",
+    )
+    assert report["translation_bound_hit"] is True
+    assert report["max_translation_mm"] > 25.0
+    assert report["registration_rejected"] is True
+    assert any("25 mm bound" in reason for reason in report["rejection_reasons"])
+    # the DICOM placement is used instead
+    assert report["center_displacement_mm"] == 0.0
+    used = sitk.ReadTransform(str(tmp_path / "registration" / "moving_cine_to_fixed_lge.tfm"))
+    assert all(abs(value) < 1e-9 for value in used.GetParameters())
 
 
 STUDY = "1.2.826.0.1.3680043.10.6000.1"

@@ -383,6 +383,16 @@ def _require_optional_dependencies() -> None:
         )
 
 
+def _collect_review(case: Path) -> None:
+    """Refresh <case>/review/. A review-copy failure must not fail a good alignment."""
+    from vtseg.review import collect_review
+
+    try:
+        collect_review(case)
+    except Exception:  # noqa: BLE001 - review copies are a convenience, not a result
+        pass
+
+
 def align_bivme_to_lge(
     case_directory: str | Path,
     *,
@@ -589,4 +599,6 @@ def align_bivme_to_lge(
         } | {"combined_labels": str((normalized / "combined_labels.nii.gz").relative_to(case))},
         "timestamp": utc_now(),
     })
+    # after the metadata write: review collection reads mesh_frame from it
+    _collect_review(case)
     return provenance

@@ -177,6 +177,16 @@ def _toml_string(value: str | Path) -> str:
     return json.dumps(str(value))
 
 
+def _collect_review(case: Path) -> None:
+    """Refresh <case>/review/. A review-copy failure must not fail a good fit."""
+    from vtseg.review import collect_review
+
+    try:
+        collect_review(case)
+    except Exception:  # noqa: BLE001 - review copies are a convenience, not a result
+        pass
+
+
 def _toml_boolean(value: bool) -> str:
     return "true" if value else "false"
 
@@ -636,4 +646,6 @@ class BivMeMRIBackend(SegmentationBackend):
             },
             "timestamp": utc_now(),
         })
+        # after the metadata write: review collection reads the frame from it
+        _collect_review(case)
         return provenance

@@ -11,6 +11,7 @@ from vtseg.dicom.series import inventory_report, scan_headers
 from vtseg.errors import VTSegError
 from vtseg.provenance import write_json
 from vtseg.qc.masks import run_case_qc
+from vtseg.review import collect_review
 from vtseg.segmentation.bivme import BivMeMRIBackend
 from vtseg.segmentation.bivme_lge import align_bivme_to_lge
 from vtseg.segmentation.matlab_export import export_matlab_case, preview_matlab_slices
@@ -119,6 +120,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bivme_parser.add_argument("--workers", type=int, default=4)
     bivme_parser.add_argument("--plots", action="store_true")
+
+    review_parser = sub.add_parser(
+        "collect-review",
+        help="copy the reviewable image/mask pairs into <case>/review/",
+    )
+    review_parser.add_argument("case_directory", type=Path)
 
     lge_parser = sub.add_parser(
         "align-bivme-lge",
@@ -253,6 +260,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("biv-me segmentation, rasterization, and QC complete")
             print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
+            return 0
+
+        if args.command == "collect-review":
+            manifest = collect_review(args.case_directory)
+            print(f"Collected {len(manifest['pairs'])} review pair(s) in {args.case_directory}/review")
+            for pair in manifest["pairs"]:
+                print(f"  {pair['id']}: frame {pair['frame']} ({pair['space']} space)")
+            for skipped in manifest["skipped_pairs"]:
+                print(f"  skipped {skipped['id']}: missing {skipped['missing']}")
+            for warning in manifest["warnings"]:
+                print(f"  WARNING: {warning}")
             return 0
 
         if args.command == "align-bivme-lge":

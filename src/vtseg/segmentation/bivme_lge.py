@@ -37,6 +37,14 @@ MESH_NAMES = {
 }
 
 
+# Cine and LGE of one exam share a FrameOfReferenceUID, so the true rigid
+# correction is breath-hold sized. Observed good alignments move the mesh
+# 6-11 mm and keep Dice 0.84-0.90 against its DICOM placement; observed
+# failures move it 69-95 mm with Dice 0.00-0.23. These gates sit in the gap.
+MAX_REGISTRATION_SHIFT_MM = 25.0
+MIN_REGISTRATION_DICE = 0.50
+
+
 def _series_groups(inventory: Inventory) -> dict[str, list[Any]]:
     groups: dict[str, list[Any]] = defaultdict(list)
     for record in inventory.instances:
@@ -158,7 +166,7 @@ def _frame_of_reference(record: Any) -> str | None:
     return str(value) if value else None
 
 
-def _mask_union(mask_directory: Path, sitk: Any) -> Any:
+def _mask_union(mask_directory: Path, sitk: Any, *, dilate_mm: float = 20.0) -> Any:
     images = [
         sitk.Cast(sitk.ReadImage(str(mask_directory / f"{name}.nii.gz")) > 0, sitk.sitkUInt8)
         for name in CANONICAL_MASKS
@@ -166,12 +174,27 @@ def _mask_union(mask_directory: Path, sitk: Any) -> Any:
     union = images[0]
     for image in images[1:]:
         union = sitk.Or(union, image)
+    if dilate_mm <= 0:
+        return union
     spacing = union.GetSpacing()
-    radius = [max(1, int(round(20.0 / value))) for value in spacing]
+    radius = [max(1, int(round(dilate_mm / value))) for value in spacing]
     dilate = sitk.BinaryDilateImageFilter()
     dilate.SetKernelRadius(radius)
     dilate.SetForegroundValue(1)
     return dilate.Execute(union)
+
+
+def _moved_mask_dice(moving_mask: Any, fixed: Any, found: Any, sitk: Any) -> float:
+    """Overlap between the mesh where registration put it and where DICOM put it."""
+    identity = sitk.Euler3DTransform()
+    with_found = sitk.Resample(moving_mask, fixed, found, sitk.sitkNearestNeighbor, 0, sitk.sitkUInt8)
+    with_identity = sitk.Resample(moving_mask, fixed, identity, sitk.sitkNearestNeighbor, 0, sitk.sitkUInt8)
+    a = sitk.GetArrayFromImage(with_found) > 0
+    b = sitk.GetArrayFromImage(with_identity) > 0
+    total = int(a.sum()) + int(b.sum())
+    if total == 0:
+        return 0.0
+    return float(2.0 * int((a & b).sum()) / total)
 
 
 def _identity_rigid(fixed: Any, sitk: Any) -> Any:
@@ -219,10 +242,13 @@ def register_cine_to_lge(
     except ImportError as exc:
         raise RegistrationError("SimpleITK is required for cine-to-LGE registration") from exc
 
-    fixed = sitk.Cast(sitk.ReadImage(str(fixed_lge_path)), sitk.sitkFloat32)
-    moving = sitk.Cast(sitk.ReadImage(str(moving_cine_path)), sitk.sitkFloat32)
+    fixed_full = sitk.Cast(sitk.ReadImage(str(fixed_lge_path)), sitk.sitkFloat32)
+    moving_full = sitk.Cast(sitk.ReadImage(str(moving_cine_path)), sitk.sitkFloat32)
     fixed_mask = _mask_union(fixed_mask_directory, sitk)
     moving_mask = _mask_union(moving_mask_directory, sitk)
+    gate_mask = _mask_union(moving_mask_directory, sitk, dilate_mm=0.0)
+    fixed, moving = fixed_full, moving_full
+
     used_masks = True
     fallback_reason = None
     initial = _identity_rigid(fixed, sitk)
@@ -248,12 +274,45 @@ def register_cine_to_lge(
     except RuntimeError as exc:
         raise RegistrationError("cine-to-LGE rigid transform is not invertible") from exc
 
+    moving_center_index = [(size - 1) / 2.0 for size in moving_full.GetSize()]
+    moving_center = moving_full.TransformContinuousIndexToPhysicalPoint(moving_center_index)
+    transformed_center = moving_to_fixed.TransformPoint(moving_center)
+    center_displacement = float(
+        np.linalg.norm(np.asarray(transformed_center) - np.asarray(moving_center))
+    )
+    moved_dice = _moved_mask_dice(gate_mask, fixed_full, fixed_to_moving, sitk)
+
+    # Reject a transform that cannot be a breath-hold correction. Cine and LGE
+    # share a FrameOfReferenceUID, so the DICOM placement is a valid answer and
+    # a safer one than a mis-registration.
+    rejected_reasons = []
+    if center_displacement > MAX_REGISTRATION_SHIFT_MM:
+        rejected_reasons.append(
+            f"center displacement {center_displacement:.1f} mm exceeds "
+            f"{MAX_REGISTRATION_SHIFT_MM:.0f} mm"
+        )
+    if moved_dice < MIN_REGISTRATION_DICE:
+        rejected_reasons.append(
+            f"overlap with the DICOM placement fell to Dice {moved_dice:.2f}, "
+            f"below {MIN_REGISTRATION_DICE:.2f}"
+        )
+    attempted = {
+        "center_displacement_mm": center_displacement,
+        "moved_mask_dice": moved_dice,
+        "transform_parameters": list(moving_to_fixed.GetParameters()),
+    }
+    if rejected_reasons:
+        fixed_to_moving = _identity_rigid(fixed_full, sitk)
+        moving_to_fixed = fixed_to_moving.GetInverse()
+        center_displacement = 0.0
+        moved_dice = 1.0
+
     output_directory.mkdir(parents=True, exist_ok=True)
     sitk.WriteTransform(fixed_to_moving, str(output_directory / "fixed_lge_to_moving_cine.tfm"))
     sitk.WriteTransform(moving_to_fixed, str(output_directory / "moving_cine_to_fixed_lge.tfm"))
     registered = sitk.Resample(
-        moving,
-        fixed,
+        moving_full,
+        fixed_full,
         fixed_to_moving,
         sitk.sitkLinear,
         0.0,
@@ -261,13 +320,13 @@ def register_cine_to_lge(
     )
     sitk.WriteImage(registered, str(output_directory / "cine_in_lge.nii.gz"))
 
-    moving_center_index = [(size - 1) / 2.0 for size in moving.GetSize()]
-    moving_center = moving.TransformContinuousIndexToPhysicalPoint(moving_center_index)
-    transformed_center = moving_to_fixed.TransformPoint(moving_center)
-    center_displacement = float(
-        np.linalg.norm(np.asarray(transformed_center) - np.asarray(moving_center))
-    )
     report = {
+        "registration_rejected": bool(rejected_reasons),
+        "rejection_reasons": rejected_reasons,
+        "attempted_registration": attempted if rejected_reasons else None,
+        "moved_mask_dice": moved_dice,
+        "max_shift_mm": MAX_REGISTRATION_SHIFT_MM,
+        "min_dice": MIN_REGISTRATION_DICE,
         "schema_version": 1,
         "method": "rigid Euler3D, Mattes mutual information",
         "fixed_image": "native LGE/MDE",
@@ -457,7 +516,13 @@ def align_bivme_to_lge(
         warnings.append(
             f"nearest cine phase differs from LGE trigger time by {float(timing_difference):.1f} ms"
         )
-    if registration_report["center_displacement_mm"] > 30.0:
+    if registration_report.get("registration_rejected"):
+        warnings.append(
+            "cine-to-LGE rigid registration was rejected and the DICOM placement was used "
+            "instead (" + "; ".join(registration_report["rejection_reasons"]) + "); masks are "
+            "aligned by FrameOfReferenceUID only, with no breath-hold correction"
+        )
+    elif registration_report["center_displacement_mm"] > 30.0:
         warnings.append("cine-to-LGE rigid registration moved the image center by more than 30 mm")
     warnings.append("manual cine-to-LGE alignment review in 3D Slicer is required before scar analysis")
     warnings = sorted(set(warnings))

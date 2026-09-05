@@ -23,6 +23,9 @@ my_ECGI_Pipeline/
 # Patient-specific configuration, metadata, reports, logs, and temporary files
 configs/local-*
 configs/*case*
+# Local UID/identifier registries and personal selection notes (never commit)
+docs/*.local.md
+docs/nsha_selected_usable_series-my.md
 **/dicom_inventory.json
 **/selected_series.json
 **/segmentation_metadata.json

@@ -209,9 +209,13 @@ CUDA_VISIBLE_DEVICES=GPU_ID python -m vtseg segment-mri-bivme "$case" \
 python -m vtseg align-bivme-lge "$case" --dicom-directory "$study"
 ```
 
-In 3D Slicer, load `references/lge/volume/image.nii.gz` with the four files in
-`segmentation/bivme/lge_aligned/normalized/`. Review alignment and masks before
-choosing the base-to-apex slice range for MATLAB export. Preview the one-based
+Both stages collect the reviewable pairs into `<case>/review/`:
+`1_cine_fit/`, `2_cine_lge_phase/`, and `3_lge/`, each holding a
+`<pair>_image.nii.gz` and a `<pair>_labels.nii.gz` of matching geometry. In 3D
+Slicer open one folder at a time, loading the image as a Volume and the labels
+as a LabelMapVolume. `vtseg collect-review "$case"` rebuilds them for an
+existing case. Review alignment and masks before choosing the base-to-apex
+slice range for MATLAB export. Preview the one-based
 export positions first; the suggested range excludes empty slices, and each
 entry maps an export position to a zero-based LGE reference index:
 

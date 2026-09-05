@@ -62,6 +62,14 @@ the prepared CT volume.
 
 ## 3. Run automatic cine-MRI segmentation and LGE alignment
 
+###### User Inputs:
+
+1. `CUDA_VISIBLE_DEVICES=GPU_ID`				$\rightarrow$ See `nvtop` and choose most free gpu.
+2. `study=data/diagnostics/CASE/Diagnostics` 	$\rightarrow$ Full MRI Exam path
+3. `case=results/nshaXX-mri` 						$\rightarrow$ decide an output_folder_name
+4. `cineSeriesUid='xxxxx-xxxx-xxxxx-xxxx'` 		$\rightarrow$ cine short-axis series UID (see in Weasis)
+5. `lgeSeriesUid ='xxxxx-xxxx-xxxxx-xxxx'` 		$\rightarrow$ matching lge series UID (see in Weasis)
+
 On the server, from the repository root:
 
 ```bash
@@ -69,7 +77,7 @@ conda activate bivme311
 export CUDA_VISIBLE_DEVICES=GPU_ID
 
 study=data/diagnostics/CASE/Diagnostics
-case=results/case-mri
+case=results/nshaXX-mri
 
 # Inventory the study, then inspect the JSON locally and choose an explicit
 # cine short-axis series UID and temporal frame (zero based). Replace these
@@ -98,8 +106,7 @@ PYTHONPATH=src python -m vtseg align-bivme-lge "$case" \
 been installed into that conda environment. It may be omitted when `vtseg` is
 already installed in the active environment.
 
-The `prepare-series` success message has the form `Prepared MR volume with N
-spatial slices at .../volume/image.nii.gz`. That confirms the selected cine
+The `prepare-series` success message has the form `Prepared MR volume with N spatial slices at .../volume/image.nii.gz`. That confirms the selected cine
 volume and `source/selected_series.json` were written and it is safe to start
 `segment-mri-bivme`. A `>` prompt after a line-continuation backslash is Bash
 asking for the next line of the same command; it is normal and is not an error. Biv-me can
@@ -116,6 +123,40 @@ selection among competing LGE stacks. The biv-me adapter stages only instances
 from the prepared cine study before view selection, so unrelated studies in the
 same Diagnostics directory cannot be mixed into fitting.
 
+### Review in 3D Slicer
+
+`segment-mri-bivme` and `align-bivme-lge` collect the reviewable image/mask
+pairs into `<case>/review/`. To rebuild them for an existing case without
+re-running either stage:
+
+```bash
+PYTHONPATH=src python -m vtseg collect-review "$case"
+```
+
+| Folder | Pair |
+| --- | --- |
+| `review/1_cine_fit/` | cine at the fitted frame |
+| `review/2_cine_lge_phase/` | cine at the LGE-matched phase |
+| `review/3_lge/` | native LGE, masks aligned into LGE space |
+
+Each folder holds `<pair>_image.nii.gz` and `<pair>_labels.nii.gz` of matching
+geometry, for example `1_cine_fit_image.nii.gz` and `1_cine_fit_labels.nii.gz`.
+Load them as a Volume and a LabelMapVolume from **one** folder at a time; the
+three pairs have different geometries and will not overlay each other. The
+filenames carry the pair name because 3D Slicer takes node names from them, so
+all six stay distinct in the node list. Labels are `uint8`: 0 background, 1 LV
+blood pool, 2 RV blood pool, 3 myocardium. Per-structure binary masks stay
+under `segmentation/`.
+
+Pairs 1 and 2 differ only by cardiac phase, so comparing 2 against 3 shows the
+cine-to-LGE registration with the phase difference removed.
+`review/review.json` records each pair's frame, source paths, and the
+registration displacement.
+
+Inspect the full base-to-apex range and the mask-to-image alignment before
+exporting anything to MATLAB. QC warnings are prompts for this manual check,
+not automatic approval.
+
 ### When automatic view selection misses 4-chamber cine
 
 Biv-me fitting requires SAX plus a 4-chamber cine view to establish tricuspid
@@ -128,7 +169,17 @@ Use biv-me's interactive adaptive mode from a graphical session (for example,
 an authorized X-forwarded SSH session), so it opens a review window only when
 views are missing or uncertain. Confirm the correct 4-chamber cine assignment,
 then let the pipeline continue. Do not use adaptive/manual mode in a headless
-session with no display. Preserve the failed attempt and use a new case output:
+session with no display; it aborts with `_tkinter.TclError: no display name and no $DISPLAY environment variable`.
+
+X11 forwarding is negotiated when the connection is made, so it cannot be
+enabled from inside an existing session:
+
+```bash
+ssh -Y cbl          # on local-machine; -Y, not -X, or Tk is refused
+echo "$DISPLAY"     # on server, expected: localhost:10.0
+```
+
+Preserve the failed attempt and use a new case output:
 
 ```bash
 case=results/case-mri-adaptive
@@ -141,22 +192,51 @@ PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
 Run `align-bivme-lge` only after adaptive biv-me fitting reports successful
 segmentation, rasterization, and QC.
 
-The paths to review in Slicer are:
+### When only the ED phase lacks tricuspid valve points
 
-```text
-results/case-mri/references/lge/volume/image.nii.gz
-results/case-mri/segmentation/bivme/lge_aligned/normalized/
+A correctly assigned 4-chamber view still fails if the valve is missing from
+the one phase biv-me anchors to. The log shows a single
+`Tricuspid valve not found on 4ch slice N phase 0` followed by
+`Cannot initialize reference dataset!`, while other phases are clean:
+
+```bash
+grep -c "Tricuspid valve not found" "$case/segmentation/bivme/raw/execution.log"
 ```
 
-The normalized directory contains `lv_blood_pool.nii.gz`,
-`rv_blood_pool.nii.gz`, `myocardium.nii.gz`, and `combined_labels.nii.gz`.
-`combined_labels.nii.gz` uses `uint8`: 0 background, 1 LV blood pool, 2 RV
-blood pool, and 3 myocardium.
+If the count is small, move the breath-hold reference to a phase that has valve
+points. `--ed-frame` sets only that reference; the exported mesh phase stays the
+frame given to `prepare-series`. If that frame also failed to fit, move both:
 
-In 3D Slicer, load the LGE reference image first, then load
-`combined_labels.nii.gz` as a label map/segmentation. Inspect the full
-base-to-apex range and the mask-to-image alignment before exporting anything to
-MATLAB. QC warnings are prompts for this manual check, not automatic approval.
+```bash
+PYTHONPATH=src python -m vtseg prepare-series "$study" \
+  --series "$cineSeriesUid" --frame 1 --output "$case"
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
+  --dicom-directory "$study" --device gpu --view-correction adaptive --ed-frame 1
+```
+
+The default is `--ed-frame 0`. Values are bounded against
+`inferred_temporal_frames` when the header temporal count is defensible, and
+recorded as `ed_frame` in `provenance.json`. Anchoring off end-diastole shifts
+where the breath-hold shift is measured, so QC the result rather than treating
+it as an ED-anchored fit. If many phases lack valve points, the 4-chamber
+segmentation is inadequate and moving the reference will not help.
+
+### Reproducing a corrected view assignment without the GUI
+
+`--view-predictions` replaces biv-me's view classification with a CSV, so a
+corrected assignment can be re-run headlessly and reproducibly:
+
+```bash
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
+  --dicom-directory "$study" --device gpu \
+  --view-predictions "$prior/segmentation/bivme/raw/processing/run/case/view-classification/view_predictions.csv"
+```
+
+Take the CSV from a run whose assignment was already correct, or edit the
+`Predicted View` column of an automatic run. Only one series may hold each of
+`2ch`, `3ch`, `4ch`, `RVOT`, `LVOT`, `2ch-RV`; duplicates are not arbitrated
+when predictions are supplied. The run records `view_predictions` in provenance
+and warns that classification was bypassed.
 
 ## 4. Export exactly the slices selected in Slicer
 
@@ -278,14 +358,18 @@ in its provenance and QC.
 
 ## Troubleshooting
 
-| Symptom | Action |
-| --- | --- |
-| `No module named vtseg` | Run commands from the repository root with `PYTHONPATH=src`, or install the package into the active environment. |
-| GPU is not visible | Do not run inference. Obtain the proper allocation, set `CUDA_VISIBLE_DEVICES` to that allocation, and verify with the PyTorch command in step 1. |
-| MATLAB says iso2mesh is missing | Run `clear classes`, `clear functions`, `rehash`, then `setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh')`. |
-| MATLAB stack contains excluded source slices | Re-export with the default ordering and source values: do not use `--slice-order reference`. |
-| MATLAB reports `getNumericField` access/collision | Pull the latest repository source, clear MATLAB classes/functions, then use the targeted resume instructions above if meshing already completed. |
-| Existing output refuses overwrite | Choose a new, descriptive `--output` directory. Do not delete prior case artifacts merely to rerun an experiment. |
+| Symptom                                            | Action                                                                                                                                             |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `No module named vtseg`                          | Run commands from the repository root with`PYTHONPATH=src`, or install the package into the active environment.                                  |
+| GPU is not visible                                 | Do not run inference. Obtain the proper allocation, set`CUDA_VISIBLE_DEVICES` to that allocation, and verify with the PyTorch command in step 1. |
+| MATLAB says iso2mesh is missing                    | Run`clear classes`, `clear functions`, `rehash`, then `setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh')`.                       |
+| MATLAB stack contains excluded source slices       | Re-export with the default ordering and source values: do not use`--slice-order reference`.                                                      |
+| MATLAB reports`getNumericField` access/collision | Pull the latest repository source, clear MATLAB classes/functions, then use the targeted resume instructions above if meshing already completed.   |
+| Existing output refuses overwrite                  | Choose a new, descriptive`--output` directory. Do not delete prior case artifacts merely to rerun an experiment.                                 |
+| `No 4ch views were selected` in `raw/execution.log` | Correct the view assignment: see [When automatic view selection misses 4-chamber cine](#when-automatic-view-selection-misses-4-chamber-cine). |
+| `No tricuspid valve points` at the ED phase only | Move the breath-hold reference with `--ed-frame`; see [When only the ED phase lacks tricuspid valve points](#when-only-the-ed-phase-lacks-tricuspid-valve-points). |
+| `TclError: no display name and no $DISPLAY` | Reconnect with `ssh -Y`, or supply `--view-predictions` instead of using the GUI. |
+| Nothing to open in 3D Slicer | Run `vtseg collect-review "$case"` to build `<case>/review/`. |
 
 ## CT variation
 

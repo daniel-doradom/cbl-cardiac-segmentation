@@ -132,6 +132,8 @@ registration/bivme_to_lge/
 registration/bivme_to_lge/metric_masks/
 segmentation/bivme/lge_aligned/
 qc/bivme/lge_alignment.json
+review/2_cine_lge_phase/
+review/3_lge/
 ```
 
 `metric_masks/` holds the untransformed meshes rasterized on each grid; they
@@ -141,7 +143,8 @@ inspection of the registration initialization.
 Re-running the stage is refused once any of these exist. If a run fails part
 way through, remove `references/lge/`, `references/cine_phase_NNN/`,
 `registration/bivme_to_lge*`, and `segmentation/bivme/lge_aligned/` before
-retrying.
+retrying. `review/` is derived and need not be removed; `vtseg collect-review`
+rewrites it from whatever outputs exist.
 
 The stored transforms explicitly distinguish SimpleITK's fixed-LGE-to-moving-
 cine resampling transform from the inverse moving-cine-to-fixed-LGE transform
@@ -155,14 +158,22 @@ execution log are preserved under `segmentation/bivme/raw/`. Canonical masks,
 metadata, and provenance are under `segmentation/bivme/`; QC is written to
 `qc/bivme/mask_qc.json`.
 
-Open the prepared image and all three canonical masks together in 3D Slicer.
-Review SAX, long-axis, basal, apical, septal, and RVOT regions. In particular,
-inspect any open-surface, empty-mask, disconnected-component, border-touching,
-or overlap warning. Automated QC and successful mesh fitting are not clinical
-validation.
+Both stages also copy the reviewable image/mask pairs into `review/`
+(`1_cine_fit/` from fitting, `2_cine_lge_phase/` and `3_lge/` from alignment),
+each holding a `<pair>_image.nii.gz` and a `<pair>_labels.nii.gz` on one grid;
+the pair name is in the filename so 3D Slicer node names stay distinct.
+`vtseg collect-review <case>` rebuilds them from existing outputs. The
+per-structure masks under `segmentation/` remain the canonical interface;
+`review/` is a convenience copy for 3D Slicer.
 
-For LGE alignment, additionally compare the registered cine, transformed mesh
-intersections, and myocardium boundaries against the untouched LGE in 3D
-Slicer. Same FrameOfReferenceUID is useful initialization but does not remove
-breath-hold or cardiac-phase mismatch. Do not begin scar quantification until
-the alignment has been manually accepted.
+Open `review/1_cine_fit/` and check SAX, long-axis, basal, apical, septal, and
+RVOT regions, plus any open-surface, empty-mask, disconnected-component,
+border-touching, or overlap warning. Automated QC and successful mesh fitting
+are not clinical validation.
+
+For LGE alignment, compare `review/3_lge/` against the untouched LGE, and use
+`review/2_cine_lge_phase/` to separate registration error from cardiac-phase
+difference: pairs 2 and 3 hold the same mesh frame in the two spaces. Same
+FrameOfReferenceUID is useful initialization but does not remove breath-hold or
+cardiac-phase mismatch. Do not begin scar quantification until the alignment
+has been manually accepted.

@@ -630,7 +630,8 @@ class BivMeMRIBackend(SegmentationBackend):
             "view_selection": view_selection,
             "native_outputs_preserved": True,
             "normalized_outputs": {
-                name: str(normalized_dir / f"{name}.nii.gz")
+                # relative to the case, so a case directory can be moved or renamed
+                name: str((normalized_dir / f"{name}.nii.gz").relative_to(case))
                 for name in ("lv_blood_pool", "rv_blood_pool", "myocardium", "combined_labels")
             },
             "timestamp": utc_now(),

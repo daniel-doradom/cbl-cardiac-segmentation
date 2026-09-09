@@ -223,6 +223,32 @@ where the breath-hold shift is measured, so QC the result rather than treating
 it as an ED-anchored fit. If many phases lack valve points, the 4-chamber
 segmentation is inadequate and moving the reference will not help.
 
+### When the slice shift is not a breath hold
+
+biv-me lines each short-axis slice up against where the other slices cross it
+(Sinclair slice shifting), solving at the ED frame and reusing that answer for
+every frame. It needs long-axis contours to find those crossings and it bounds
+nothing, so a study whose long-axis views are unreliable can have slices thrown
+much further than a breath hold. Check it after a fit:
+
+```bash
+head -40 "$case/segmentation/bivme/raw/models/case/shift_file.txt"
+```
+
+Accepted cases so far keep a median under 5 mm and no slice past 15 mm. If
+slices have moved tens of millimetres, refit with the correction off and compare:
+
+```bash
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
+  --dicom-directory "$study" --device gpu --breathhold-shift none
+```
+
+`--breathhold-shift` accepts `derived_from_ed` (default), `average_all_frames`
+and `none`. A non-default choice is recorded in provenance and raised as a
+warning. It removes shift damage but cannot fix unreliable contours, so compare
+`review/1_cine_fit/` between the two runs rather than trusting the residual,
+which is computed against the run's own guide points either way.
+
 ### Reproducing a corrected view assignment without the GUI
 
 `--view-predictions` replaces biv-me's view classification with a CSV, so a

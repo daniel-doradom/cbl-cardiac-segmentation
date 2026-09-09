@@ -69,6 +69,41 @@ def test_bivme_config_accepts_an_explicit_ed_frame(tmp_path):
     assert 'shifting = "derived_from_ed"' in config
 
 
+def test_bivme_config_can_disable_breathhold_shifting(tmp_path):
+    config = build_config(
+        input_root=tmp_path / "input",
+        raw_directory=tmp_path / "raw",
+        correct_mode="automatic",
+        workers=2,
+        generate_plots=False,
+        breathhold_shift="none",
+    )
+    assert 'shifting = "none"' in config
+
+
+def test_bivme_config_can_average_breathhold_shifting(tmp_path):
+    config = build_config(
+        input_root=tmp_path / "input",
+        raw_directory=tmp_path / "raw",
+        correct_mode="automatic",
+        workers=2,
+        generate_plots=False,
+        breathhold_shift="average_all_frames",
+    )
+    assert 'shifting = "average_all_frames"' in config
+
+
+def test_bivme_rejects_an_unknown_breathhold_shift_mode(tmp_path):
+    case = _prepared_cine_case(tmp_path)
+    with pytest.raises(SeriesSelectionError, match="breathhold-shift"):
+        BivMeMRIBackend().run(
+            case,
+            dicom_directory=tmp_path / "dicom",
+            frame=0,
+            breathhold_shift="off",
+        )
+
+
 def _prepared_cine_case(tmp_path, **characterization):
     case = tmp_path / "case"
     (case / "volume").mkdir(parents=True)

@@ -12,7 +12,7 @@ from vtseg.errors import VTSegError
 from vtseg.provenance import write_json
 from vtseg.qc.masks import run_case_qc
 from vtseg.review import collect_review
-from vtseg.segmentation.bivme import BivMeMRIBackend
+from vtseg.segmentation.bivme import BREATHHOLD_SHIFT_MODES, BivMeMRIBackend
 from vtseg.segmentation.bivme_lge import align_bivme_to_lge
 from vtseg.segmentation.matlab_export import export_matlab_case, preview_matlab_slices
 from vtseg.segmentation.matlab_import import import_matlab_case
@@ -116,6 +116,16 @@ def build_parser() -> argparse.ArgumentParser:
             "in the format of raw/processing/run/case/view-classification/"
             "view_predictions.csv. Bypasses the correction GUI, so a headless "
             "session can reproduce a corrected view assignment."
+        ),
+    )
+    bivme_parser.add_argument(
+        "--breathhold-shift",
+        default="derived_from_ed",
+        choices=BREATHHOLD_SHIFT_MODES,
+        help=(
+            "breath-hold slice-shift correction (default derived_from_ed). Use 'none' "
+            "when models/case/shift_file.txt shows slices displaced far further than a "
+            "breath hold, which happens when the long-axis views are unreliable."
         ),
     )
     bivme_parser.add_argument("--workers", type=int, default=4)
@@ -253,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
                 frame=args.frame,
                 correct_mode=args.view_correction,
                 ed_frame=args.ed_frame,
+                breathhold_shift=args.breathhold_shift,
                 view_predictions=args.view_predictions,
                 workers=args.workers,
                 generate_plots=args.plots,

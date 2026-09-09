@@ -29,6 +29,11 @@ from vtseg.segmentation.base import BackendStatus, SegmentationBackend
 
 TASK = "cine_cmr_biventricular_mesh"
 CASE_ALIAS = "case"
+# biv-me's Sinclair slice shifting slides each slice to meet the others'
+# intersections. It needs long-axis contours to define them and bounds nothing, so
+# a study with weak long-axis views can have slices thrown further than a heart is
+# long. "none" keeps the scanner's own slice positions.
+BREATHHOLD_SHIFT_MODES = ("derived_from_ed", "average_all_frames", "none")
 VIEW_PREDICTION_COLUMNS = (
     "Series Number", "Series Description", "Slice Location",
     "Predicted View", "Vote Share", "Confidence", "Frames Per Slice",
@@ -200,6 +205,7 @@ def build_config(
     generate_plots: bool,
     view_selection: str = "default",
     ed_frame: int = 0,
+    breathhold_shift: str = "derived_from_ed",
 ) -> str:
     return f"""title = "vtseg biv-me adapter"
 version = "1.2.0"
@@ -247,7 +253,7 @@ gp_suffix = ""
 si_suffix = ""
 
 [breathhold_correction]
-shifting = "derived_from_ed"
+shifting = "{breathhold_shift}"
 ed_frame = {ed_frame}
 
 [gp_processing]
@@ -345,6 +351,7 @@ class BivMeMRIBackend(SegmentationBackend):
         workers: int = 4,
         generate_plots: bool = False,
         ed_frame: int = 0,
+        breathhold_shift: str = "derived_from_ed",
         view_predictions: Path | None = None,
         repo_root: Path | None = None,
     ) -> dict[str, Any]:
@@ -377,6 +384,11 @@ class BivMeMRIBackend(SegmentationBackend):
         ed_frame = int(ed_frame)
         if ed_frame < 0:
             raise SeriesSelectionError("biv-me ed-frame must be non-negative")
+        if breathhold_shift not in BREATHHOLD_SHIFT_MODES:
+            raise SeriesSelectionError(
+                "biv-me breathhold-shift must be one of "
+                + ", ".join(BREATHHOLD_SHIFT_MODES)
+            )
         supplied_views: Path | None = None
         if view_predictions is not None:
             supplied_views = Path(view_predictions).expanduser().resolve()
@@ -488,6 +500,7 @@ class BivMeMRIBackend(SegmentationBackend):
                     generate_plots=generate_plots,
                     view_selection=view_selection,
                     ed_frame=ed_frame,
+                    breathhold_shift=breathhold_shift,
                 ),
                 encoding="utf-8",
             )
@@ -573,6 +586,11 @@ class BivMeMRIBackend(SegmentationBackend):
                 "view predictions were supplied explicitly; biv-me's own view "
                 "classification was bypassed"
             )
+        if breathhold_shift != "derived_from_ed":
+            warnings.append(
+                f"breath-hold slice-shift correction set to '{breathhold_shift}' instead of "
+                "biv-me's default 'derived_from_ed'; slice positions are not the default ones"
+            )
         if view_selection == "image-only":
             warnings.append(
                 "single-orientation cine input used biv-me image-only view selection"
@@ -613,6 +631,7 @@ class BivMeMRIBackend(SegmentationBackend):
             model_options={
                 "frame": selected_frame,
                 "ed_frame": ed_frame,
+                "breathhold_shift": breathhold_shift,
                 "view_predictions": str(supplied_views) if supplied_views else None,
                 "view_correction": correct_mode,
                 "view_selection": view_selection,
@@ -637,6 +656,7 @@ class BivMeMRIBackend(SegmentationBackend):
             "device": device,
             "frame": selected_frame,
             "ed_frame": ed_frame,
+            "breathhold_shift": breathhold_shift,
             "view_selection": view_selection,
             "native_outputs_preserved": True,
             "normalized_outputs": {

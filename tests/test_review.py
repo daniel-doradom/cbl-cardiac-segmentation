@@ -48,8 +48,8 @@ def test_collect_review_gathers_the_cine_pair_alone(tmp_path):
     assert [pair["id"] for pair in manifest["pairs"]] == ["1_cine_fit"]
     assert manifest["pairs"][0]["frame"] == 3
     assert {skipped["id"] for skipped in manifest["skipped_pairs"]} == {"2_cine_lge_phase", "3_lge"}
-    assert (case / "review" / "1_cine_fit" / "1_cine_fit_image.nii.gz").is_file()
-    assert (case / "review" / "1_cine_fit" / "1_cine_fit_labels.nii.gz").is_file()
+    assert (case / "review" / "1_cine_fit" / f"1_{case.name}_cine_fit_image.nii.gz").is_file()
+    assert (case / "review" / "1_cine_fit" / f"1_{case.name}_cine_fit_labels.nii.gz").is_file()
 
 
 def test_collect_review_gathers_all_three_pairs_with_frames(tmp_path):
@@ -118,8 +118,12 @@ def test_collect_review_names_files_after_their_pair(tmp_path):
     names = [Path(p[kind]).name for p in manifest["pairs"] for kind in ("image", "labels")]
     assert len(names) == len(set(names)) == 6
     for pair in manifest["pairs"]:
-        assert Path(pair["image"]).name == f"{pair['id']}_image.nii.gz"
-        assert Path(pair["labels"]).name == f"{pair['id']}_labels.nii.gz"
+        number, _, rest = pair["id"].partition("_")
+        assert pair["prefix"] == f"{number}_{case.name}_{rest}"
+        assert Path(pair["image"]).name == f"{pair['prefix']}_image.nii.gz"
+        assert Path(pair["labels"]).name == f"{pair['prefix']}_labels.nii.gz"
+        # the run name distinguishes two runs of one case in Slicer
+        assert case.name in Path(pair["image"]).name
 
 
 def test_collect_review_clears_copies_from_an_earlier_naming_scheme(tmp_path):

@@ -139,12 +139,14 @@ PYTHONPATH=src python -m vtseg collect-review "$case"
 | `review/2_cine_lge_phase/` | cine at the LGE-matched phase |
 | `review/3_lge/` | native LGE, masks aligned into LGE space |
 
-Each folder holds `<pair>_image.nii.gz` and `<pair>_labels.nii.gz` of matching
-geometry, for example `1_cine_fit_image.nii.gz` and `1_cine_fit_labels.nii.gz`.
-Load them as a Volume and a LabelMapVolume from **one** folder at a time; the
-three pairs have different geometries and will not overlay each other. The
-filenames carry the pair name because 3D Slicer takes node names from them, so
-all six stay distinct in the node list. Labels are `uint8`: 0 background, 1 LV
+Each folder holds an `_image.nii.gz` and a `_labels.nii.gz` of matching
+geometry, named `<number>_<run>_<pair>_...`, for example
+`1_nsha06-mri-bound_cine_fit_image.nii.gz`. Load them as a Volume and a
+LabelMapVolume from **one** folder at a time; the three pairs have different
+geometries and will not overlay each other. The file names carry both the run
+and the pair because 3D Slicer takes node names from them: all six stay
+distinct in the node list, and two runs of the same case can be opened together
+to compare them. Labels are `uint8`: 0 background, 1 LV
 blood pool, 2 RV blood pool, 3 myocardium. Per-structure binary masks stay
 under `segmentation/`.
 

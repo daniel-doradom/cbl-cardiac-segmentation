@@ -169,8 +169,9 @@ metadata, and provenance are under `segmentation/bivme/`; QC is written to
 
 Both stages also copy the reviewable image/mask pairs into `review/`
 (`1_cine_fit/` from fitting, `2_cine_lge_phase/` and `3_lge/` from alignment),
-each holding a `<pair>_image.nii.gz` and a `<pair>_labels.nii.gz` on one grid;
-the pair name is in the filename so 3D Slicer node names stay distinct.
+each holding an `_image.nii.gz` and a `_labels.nii.gz` on one grid, prefixed
+`<number>_<run>_<pair>`; the run and pair names are in the file name so 3D
+Slicer node names stay distinct even with two runs of one case open at once.
 `vtseg collect-review <case>` rebuilds them from existing outputs. The
 per-structure masks under `segmentation/` remain the canonical interface;
 `review/` is a convenience copy for 3D Slicer.

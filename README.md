@@ -210,10 +210,12 @@ python -m vtseg align-bivme-lge "$case" --dicom-directory "$study"
 ```
 
 Both stages collect the reviewable pairs into `<case>/review/`:
-`1_cine_fit/`, `2_cine_lge_phase/`, and `3_lge/`, each holding a
-`<pair>_image.nii.gz` and a `<pair>_labels.nii.gz` of matching geometry. In 3D
-Slicer open one folder at a time, loading the image as a Volume and the labels
-as a LabelMapVolume. `vtseg collect-review "$case"` rebuilds them for an
+`1_cine_fit/`, `2_cine_lge_phase/`, and `3_lge/`, each holding an
+`_image.nii.gz` and a `_labels.nii.gz` of matching geometry, named for the run
+they came from (`3_nsha06-mri-bound_lge_image.nii.gz`). In 3D Slicer open one
+folder at a time, loading the image as a Volume and the labels as a
+LabelMapVolume; because the run name is in the file name, two runs can be
+compared side by side without their node names clashing. `vtseg collect-review "$case"` rebuilds them for an
 existing case. Review alignment and masks before choosing the base-to-apex
 slice range for MATLAB export. Preview the one-based
 export positions first; the suggested range excludes empty slices, and each

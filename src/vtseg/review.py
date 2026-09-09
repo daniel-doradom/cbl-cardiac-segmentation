@@ -88,6 +88,25 @@ def _pair_specs(case: Path) -> list[dict[str, Any]]:
     return specs
 
 
+def _slug(name: str) -> str:
+    """Reduce a directory name to characters that are safe in a filename."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-._")
+    return cleaned or "case"
+
+
+def _pair_prefix(case: Path, pair_id: str) -> str:
+    """Name a pair's files after the run they came from.
+
+    3D Slicer names its nodes after the file, so two folders opened together must
+    not produce the same node names. The run directory name is used rather than
+    the case identifier because comparing two runs of one case is a normal
+    review: ``nsha02-pre-mri-v3`` and ``nsha02-pre-mri-v4`` are both
+    ``nsha02-pre`` and would otherwise collide.
+    """
+    number, _, rest = pair_id.partition("_")
+    return f"{number}_{_slug(case.name)}_{rest}"
+
+
 def _remove_stale_copies(destination: Path, keep: set[str]) -> None:
     """Delete NIfTI copies this pair folder no longer owns.
 
@@ -136,13 +155,15 @@ def collect_review(case_directory: str | Path) -> dict[str, Any]:
 
         destination = review_root / spec["id"]
         destination.mkdir(parents=True, exist_ok=True)
-        image_name = f"{spec['id']}_image.nii.gz"
-        labels_name = f"{spec['id']}_labels.nii.gz"
+        prefix = _pair_prefix(case, spec["id"])
+        image_name = f"{prefix}_image.nii.gz"
+        labels_name = f"{prefix}_labels.nii.gz"
         _remove_stale_copies(destination, {image_name, labels_name})
         shutil.copyfile(image, destination / image_name)
         shutil.copyfile(labels, destination / labels_name)
         collected.append({
             "id": spec["id"],
+            "prefix": prefix,
             "space": spec["space"],
             "description": spec["description"],
             "frame": spec["frame"],
@@ -189,7 +210,7 @@ def collect_review(case_directory: str | Path) -> dict[str, Any]:
         warnings.extend(_read_json(stage).get("warnings", []))
 
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "case": case.name,
         "pairs": collected,
         "skipped_pairs": skipped,
@@ -197,9 +218,10 @@ def collect_review(case_directory: str | Path) -> dict[str, Any]:
         "registration": registration_summary,
         "warnings": sorted(set(warnings)),
         "usage": (
-            "In 3D Slicer load <pair>_image.nii.gz as a Volume and <pair>_labels.nii.gz "
-            "as a LabelMapVolume from the same folder. Do not mix folders: each "
-            "pair has its own geometry."
+            "In 3D Slicer load *_image.nii.gz as a Volume and *_labels.nii.gz as a "
+            "LabelMapVolume from the same folder. File names carry the run name, so "
+            "two runs can be opened side by side without their node names clashing. "
+            "Do not mix folders: each pair has its own geometry."
         ),
         "timestamp": utc_now(),
     }

@@ -26,6 +26,12 @@ conda activate bivme311
 python -c "import torch; print(torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
 ```
 
+One-line equivalent:
+
+```bash
+export CUDA_VISIBLE_DEVICES=GPU_ID; conda activate bivme311; python -c "import torch; print(torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
+```
+
 The command must report one visible allocated device. Do not select a GPU just
 because it appears in `nvidia-smi`; follow the allocation policy of the lab.
 
@@ -43,6 +49,12 @@ artifacts from the server:
 cd /path/to/vt-segmentation-eval && git pull --ff-only
 rsync -av --partial --progress USER@LAB_HOST:~/VT/vt-segmentation-eval/results/ \
   /path/to/vt-segmentation-eval/results/
+```
+
+One-line equivalent:
+
+```bash
+cd /path/to/vt-segmentation-eval && git pull --ff-only && rsync -av --partial --progress USER@LAB_HOST:~/VT/vt-segmentation-eval/results/ /path/to/vt-segmentation-eval/results/
 ```
 
 This is intentionally one-way: automatic outputs are created on the server and
@@ -100,6 +112,15 @@ PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
 # Select native LGE/MDE, register cine geometry, and rasterize LGE-space masks.
 PYTHONPATH=src python -m vtseg align-bivme-lge "$case" \
   --dicom-directory "$study" --lge-series "$lgeSeriesUid"
+```
+
+One-line equivalents:
+
+```bash
+PYTHONPATH=src python -m vtseg inspect-dicom "$study" --json "$case/source/dicom_inventory.json"
+PYTHONPATH=src python -m vtseg prepare-series "$study" --series "$cineSeriesUid" --frame "$frame" --output "$case"
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" --dicom-directory "$study" --device gpu
+PYTHONPATH=src python -m vtseg align-bivme-lge "$case" --dicom-directory "$study" --lge-series "$lgeSeriesUid"
 ```
 
 `PYTHONPATH=src` makes the checked-out package runnable even when it has not
@@ -191,6 +212,13 @@ PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
   --dicom-directory "$study" --device gpu --view-correction adaptive
 ```
 
+One-line equivalents:
+
+```bash
+PYTHONPATH=src python -m vtseg prepare-series "$study" --series "$cineSeriesUid" --frame "$frame" --output "$case"
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" --dicom-directory "$study" --device gpu --view-correction adaptive
+```
+
 Run `align-bivme-lge` only after adaptive biv-me fitting reports successful
 segmentation, rasterization, and QC.
 
@@ -214,6 +242,13 @@ PYTHONPATH=src python -m vtseg prepare-series "$study" \
   --series "$cineSeriesUid" --frame 1 --output "$case"
 PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
   --dicom-directory "$study" --device gpu --view-correction adaptive --ed-frame 1
+```
+
+One-line equivalents:
+
+```bash
+PYTHONPATH=src python -m vtseg prepare-series "$study" --series "$cineSeriesUid" --frame 1 --output "$case"
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" --dicom-directory "$study" --device gpu --view-correction adaptive --ed-frame 1
 ```
 
 The default is `--ed-frame 0`. Values are bounded against
@@ -243,6 +278,12 @@ PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
   --dicom-directory "$study" --device gpu --breathhold-shift none
 ```
 
+One-line equivalent:
+
+```bash
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" --dicom-directory "$study" --device gpu --breathhold-shift none
+```
+
 `--breathhold-shift` accepts `derived_from_ed` (default), `average_all_frames`
 and `none`. A non-default choice is recorded in provenance and raised as a
 warning. It removes shift damage but cannot fix unreliable contours, so compare
@@ -258,6 +299,12 @@ corrected assignment can be re-run headlessly and reproducibly:
 PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \
   --dicom-directory "$study" --device gpu \
   --view-predictions "$prior/segmentation/bivme/raw/processing/run/case/view-classification/view_predictions.csv"
+```
+
+One-line equivalent:
+
+```bash
+PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" --dicom-directory "$study" --device gpu --view-predictions "$prior/segmentation/bivme/raw/processing/run/case/view-classification/view_predictions.csv"
 ```
 
 Take the CSV from a run whose assignment was already correct, or edit the
@@ -290,6 +337,12 @@ PYTHONPATH=src python -m vtseg export-matlab-seg \
   --start-slice START --end-slice END --slices COUNT
 ```
 
+One-line equivalent:
+
+```bash
+PYTHONPATH=src python -m vtseg export-matlab-seg "$case/segmentation/bivme/lge_aligned/normalized" --reference "$case/references/lge" --output "$case/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
+```
+
 For example, source 25 through source 100 as 20 MATLAB slices is:
 
 ```bash
@@ -299,6 +352,12 @@ PYTHONPATH=src python -m vtseg export-matlab-seg \
   --output "$case/manual/matlab-source-025-100-20slices" \
   --slicer-approved \
   --start-slice 25 --end-slice 100 --slices 20
+```
+
+One-line equivalent:
+
+```bash
+PYTHONPATH=src python -m vtseg export-matlab-seg "$case/segmentation/bivme/lge_aligned/normalized" --reference "$case/references/lge" --output "$case/manual/matlab-source-025-100-20slices" --slicer-approved --start-slice 25 --end-slice 100 --slices 20
 ```
 
 Do **not** add `--slice-order reference` for this source-slice workflow; that
@@ -328,7 +387,7 @@ rehash
 
 repoRoot = '/path/to/vt-segmentation-eval';
 addpath(fullfile(repoRoot, 'matlab'));
-setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh');
+setup_vtseg();
 
 caseDirectory = fullfile(repoRoot, 'results', 'case-mri', 'manual', ...
     'matlab-source-START-END-COUNTslices');
@@ -339,11 +398,13 @@ The initial interactive viewer asks for one rectangular display ROI on a
 representative slice. Draw the rectangle, then double-click inside it to
 confirm. The crop is display-only: it does not crop DICOMs or masks. The same
 ROI is reused for the slice slider, fill toggle, fill-opacity slider,
-correction view, and final raw/contour overview figures. Its ignored case-local
+contour-width slider, correction view, and final raw/contour overview figures.
+Use **Continue to correction** to leave this viewer. Its ignored case-local
 record is `seg/review_display_crop.json`.
 
-For each correction slice, press Enter or answer `n` to keep every imported
-mask unchanged, or answer `y` to choose an action for LV, RV, and Epi:
+In the **Review/correct masks** window, use **Previous**, **Keep / Next**,
+**Modify**, and **Go to slice** to navigate. Select **Modify** to disable
+navigation and show structure-specific LV, RV, and Epi actions:
 
 - `keep` leaves that structure exactly as imported.
 - `edit` initializes draggable polygon vertices from the existing mask. All
@@ -355,14 +416,15 @@ mask unchanged, or answer `y` to choose an action for LV, RV, and Epi:
 
 MATLAB blocks acceptance when LV and RV overlap or either cavity extends
 outside Epi. Rejecting a correction restores that slice's original masks.
-After the final save, `myocardium.mat` is regenerated as
+Select **Finish review**, then choose **Save reviewed masks** or **Discard
+review** in the figure. After saving, `myocardium.mat` is regenerated as
 `Epi & ~Lendo & ~Rendo`, keeping scar analysis and mesh geometry consistent.
 
 The viewer shows the current MATLAB mask number plus the raw DICOM filename,
 source number, and reference z-index. Use this information when deciding which
 source range to export next. Close the interactive viewer to proceed to the
-correction and meshing stages. Save corrections when MATLAB prompts; the mesh
-workflow consumes those MATLAB correction files.
+correction and meshing stages. The mesh workflow consumes the MATLAB correction
+files after the in-figure save choice.
 
 Use `true` as the third argument to `main_bivme_lge_tetmesh` only when the
 optional manual LGE scar workflow is intended before meshing.
@@ -402,6 +464,12 @@ PYTHONPATH=src python -m vtseg import-matlab-seg \
   --output "$case/manual/normalized"
 ```
 
+One-line equivalent:
+
+```bash
+PYTHONPATH=src python -m vtseg import-matlab-seg "$case/manual/matlab-source-START-END-COUNTslices" --reference "$case/references/lge" --output "$case/manual/normalized"
+```
+
 This writes the three individual masks, `combined_labels.nii.gz`, QC, and
 provenance. Because only a selected source range was corrected, unselected
 slices are empty in this imported canonical volume; that limitation is recorded
@@ -431,6 +499,12 @@ uses TotalSegmentator instead of biv-me:
 conda activate vtseg-ct
 PYTHONPATH=src python -m vtseg segment-ct results/case-ct \
   --device gpu --force-split
+```
+
+One-line equivalent:
+
+```bash
+conda activate vtseg-ct && PYTHONPATH=src python -m vtseg segment-ct results/case-ct --device gpu --force-split
 ```
 
 Its automatic output is

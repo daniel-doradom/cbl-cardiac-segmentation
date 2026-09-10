@@ -138,6 +138,7 @@ python -m vtseg export-matlab-seg \
   results/local-mri-case/segmentation/bivme/lge_aligned/normalized \
   --reference results/local-mri-case/references/lge \
   --output results/local-mri-case/manual/matlab \
+  --slicer-approved \
   --start-slice 1 --end-slice 100 --slices 12
 ```
 
@@ -151,7 +152,10 @@ the adapter does not copy DICOM pixels into this repository.
 
 `export-matlab-seg` writes an ignored MATLAB case with DICOM files in `raw/`
 and matching `Lendo.mat`, `Rendo.mat`, `Epi.mat`, and `myocardium.mat` stacks
-in `seg/`. It orders the stack base-to-apex from the mask extent. `--start-slice`
+in `seg/`. The required `--slicer-approved` flag confirms that the matching
+LGE image and masks passed visual review and records that acknowledgment in
+the export manifest and provenance. It orders the stack base-to-apex from the
+mask extent. `--start-slice`
 and `--end-slice` are one-based positions in that order; `--slices` retains
 both endpoints and distributes intermediate slices as evenly as possible. In MATLAB, run
 `vtseg.main_bivme_lge_tetmesh` from the tracked `matlab/` directory (after
@@ -233,6 +237,7 @@ Then export the reviewed range:
 python -m vtseg export-matlab-seg \
   "$case/segmentation/bivme/lge_aligned/normalized" \
   --reference "$case/references/lge" --output "$case/manual/matlab" \
+  --slicer-approved \
   --start-slice START --end-slice END --slices COUNT
 ```
 
@@ -246,6 +251,7 @@ python -m vtseg export-matlab-seg \
   "$case/segmentation/bivme/lge_aligned/normalized" \
   --reference "$case/references/lge" \
   --output "$case/manual/matlab-source-025-100-20slices" \
+  --slicer-approved \
   --start-slice 25 --end-slice 100 --slices 20
 ```
 

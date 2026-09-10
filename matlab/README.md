@@ -33,6 +33,21 @@ opacity control, correction window, and final overview figures without changing
 the source DICOMs or masks. MATLAB corrections are authoritative for mesh
 generation.
 
+During correction, press Enter at the slice prompt to keep it unchanged or
+answer `y` to review its structures. Each LV, RV, and epicardial mask then
+supports `keep`, `edit`, `redraw`, and `clear`:
+
+- `edit` initializes movable polygon vertices from every existing mask
+  component. Move only the needed vertices and click **Accept contour edits**.
+- `redraw` discards that structure on the slice and draws one or more new
+  components from scratch.
+- `clear` removes that structure from the entire slice.
+- `keep` preserves the imported mask exactly.
+
+Invalid cavity overlap or a cavity extending outside Epi cannot be accepted.
+After final confirmation, `myocardium.mat` is regenerated as
+`Epi & ~Lendo & ~Rendo` before scar analysis and mesh generation.
+
 For the full server-to-Slicer-to-MATLAB procedure, source-slice selection
 semantics, synchronization commands, corrected-mask import, and recovery from
 late-stage mesh export errors, see [the manual workflow runbook](../docs/manual-workflow.md).

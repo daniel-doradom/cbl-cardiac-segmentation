@@ -346,7 +346,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             return;
         end
 
-        [display_image, h_img] = show_slice_with_masks( ...
+        [display_image, ~] = show_slice_with_masks( ...
             ax, path_image, folder(k).name, gs_range, k, ...
             Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
 
@@ -390,8 +390,51 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
                 old_lepi = lepi(:, :, k);
             end
 
-            [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
-                ax, h_img, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
+            candidate_Lendo = Lendo;
+            candidate_Rendo = Rendo;
+            candidate_Epi = Epi;
+            candidate_lepi = lepi;
+            correction_valid = false;
+
+            while ~correction_valid
+                [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi] = ...
+                    correct_slice_masks( ...
+                        ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
+                        candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range);
+
+                if ~isvalid(figure_handle)
+                    disp('Review window was closed. Masks will not be saved.');
+                    return;
+                end
+
+                validation_errors = validate_slice_masks( ...
+                    candidate_Lendo(:, :, k), candidate_Rendo(:, :, k), ...
+                    candidate_Epi(:, :, k));
+                if isempty(validation_errors)
+                    correction_valid = true;
+                else
+                    fprintf('The corrected masks cannot be accepted:\n');
+                    for error_index = 1:numel(validation_errors)
+                        fprintf('  - %s\n', validation_errors{error_index});
+                    end
+                    invalid_action = input( ...
+                        'Revise the current edits or discard them? [revise/discard] >> ', 's');
+                    if ~strcmpi(invalid_action, 'revise')
+                        candidate_Lendo(:, :, k) = old_Lendo;
+                        candidate_Rendo(:, :, k) = old_Rendo;
+                        candidate_Epi(:, :, k) = old_Epi;
+                        if has_lepi
+                            candidate_lepi(:, :, k) = old_lepi;
+                        end
+                        correction_valid = true;
+                    end
+                end
+            end
+
+            Lendo = candidate_Lendo;
+            Rendo = candidate_Rendo;
+            Epi = candidate_Epi;
+            lepi = candidate_lepi;
 
             show_slice_with_masks( ...
                 ax, path_image, folder(k).name, gs_range, k, ...
@@ -416,57 +459,195 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
 end
 
 function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
-        ax, h_img, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop)
+        ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
 
-    prompt = 'Redraw LV endocardium? [y/n/clear] >> ';
-    [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'r');
+    prompt = 'LV endocardium action? [keep/edit/redraw/clear] >> ';
+    current_mask = Lendo(display_crop.rows, display_crop.columns, k);
+    [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+        ax, display_image, current_mask, prompt, 'r', gs_range);
     if did_update
-        Lendo(:, :, k) = replace_crop_mask(Lendo(:, :, k), new_mask, display_crop);
+        Lendo(:, :, k) = apply_mask_update( ...
+            Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
     end
 
-    prompt = 'Redraw RV endocardium? [y/n/clear] >> ';
-    [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'c');
+    prompt = 'RV endocardium action? [keep/edit/redraw/clear] >> ';
+    current_mask = Rendo(display_crop.rows, display_crop.columns, k);
+    [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+        ax, display_image, current_mask, prompt, 'c', gs_range);
     if did_update
-        Rendo(:, :, k) = replace_crop_mask(Rendo(:, :, k), new_mask, display_crop);
+        Rendo(:, :, k) = apply_mask_update( ...
+            Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
     end
 
-    prompt = 'Redraw epicardium? [y/n/clear] >> ';
-    [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'g');
+    prompt = 'Epicardium action? [keep/edit/redraw/clear] >> ';
+    current_mask = Epi(display_crop.rows, display_crop.columns, k);
+    [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+        ax, display_image, current_mask, prompt, 'g', gs_range);
     if did_update
-        Epi(:, :, k) = replace_crop_mask(Epi(:, :, k), new_mask, display_crop);
+        Epi(:, :, k) = apply_mask_update( ...
+            Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
     end
 
     if has_lepi
-        prompt = 'Redraw LV epicardium? [y/n/clear] >> ';
-        [new_mask, did_update] = redraw_one_mask(ax, h_img, display_image, prompt, 'b');
+        prompt = 'LV epicardium action? [keep/edit/redraw/clear] >> ';
+        current_mask = lepi(display_crop.rows, display_crop.columns, k);
+        [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+            ax, display_image, current_mask, prompt, 'b', gs_range);
         if did_update
-            lepi(:, :, k) = replace_crop_mask(lepi(:, :, k), new_mask, display_crop);
+            lepi(:, :, k) = apply_mask_update( ...
+                lepi(:, :, k), new_mask, display_crop, replace_entire_slice);
         end
     end
 end
 
-function [mask, did_update] = redraw_one_mask(ax, h_img, Im, prompt, color)
+function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
+        ax, Im, current_mask, prompt, color, gs_range)
     did_update = false;
-    mask = zeros(size(Im));
+    replace_entire_slice = false;
+    mask = logical(current_mask);
 
     str = input(prompt, 's');
-
-    if isempty(str) || strcmpi(str, 'n')
-        return;
+    if isempty(str)
+        str = 'keep';
     end
 
-    did_update = true;
+    if strcmpi(str, 'keep') || strcmpi(str, 'k') || strcmpi(str, 'n')
+        return;
+    end
 
     if strcmpi(str, 'clear')
+        mask = false(size(Im));
+        did_update = true;
+        replace_entire_slice = true;
         return;
     end
 
-    if strcmpi(str, 'y')
-        [BW, ~, ~] = draw_polygon_mask(ax, h_img, color);
-        mask = double(BW) * 100;
-    else
-        did_update = false;
+    if strcmpi(str, 'edit') || strcmpi(str, 'e')
+        [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range);
+        return;
     end
+
+    if strcmpi(str, 'redraw') || strcmpi(str, 'r') || strcmpi(str, 'y')
+        mask = redraw_mask_components(ax, Im, color, gs_range);
+        did_update = true;
+        replace_entire_slice = true;
+        return;
+    end
+
+    fprintf('Unknown action "%s"; keeping the existing mask.\n', str);
+end
+
+function [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range)
+mask = logical(current_mask);
+did_update = false;
+contours = vtseg.mask_to_editable_contours(mask);
+if isempty(contours)
+    fprintf('This mask is empty. Use redraw to create it from scratch.\n');
+    return;
+end
+
+cla(ax);
+imshow(Im, gs_range, 'Parent', ax);
+hold(ax, 'on');
+plot_mask_contour(ax, mask, color);
+
+rois = cell(numel(contours), 1);
+for index = 1:numel(contours)
+    rois{index} = drawpolygon(ax, ...
+        'Position', contours(index).Position, ...
+        'Color', color, ...
+        'LineWidth', 1.5, ...
+        'FaceAlpha', 0.10);
+end
+title(ax, 'Drag contour vertices, then accept or cancel below');
+
+figure_handle = ancestor(ax, 'figure');
+setappdata(figure_handle, 'vtsegContourEditAction', '');
+accept_button = uicontrol(figure_handle, ...
+    'Style', 'pushbutton', ...
+    'String', 'Accept contour edits', ...
+    'Units', 'normalized', ...
+    'Position', [0.62 0.02 0.20 0.055], ...
+    'Callback', @(~, ~) finish_contour_edit(figure_handle, 'accept'));
+cancel_button = uicontrol(figure_handle, ...
+    'Style', 'pushbutton', ...
+    'String', 'Cancel', ...
+    'Units', 'normalized', ...
+    'Position', [0.83 0.02 0.12 0.055], ...
+    'Callback', @(~, ~) finish_contour_edit(figure_handle, 'cancel'));
+uiwait(figure_handle);
+
+if ~isvalid(figure_handle)
+    return;
+end
+action = getappdata(figure_handle, 'vtsegContourEditAction');
+if isvalid(accept_button)
+    delete(accept_button);
+end
+if isvalid(cancel_button)
+    delete(cancel_button);
+end
+if ~strcmp(action, 'accept')
+    return;
+end
+
+edited_contours = contours;
+kept = false(numel(rois), 1);
+for index = 1:numel(rois)
+    if ~isempty(rois{index}) && isvalid(rois{index}) && size(rois{index}.Position, 1) >= 3
+        edited_contours(index).Position = rois{index}.Position;
+        kept(index) = true;
+    end
+end
+edited_contours = edited_contours(kept);
+mask = vtseg.editable_contours_to_mask(edited_contours, size(Im));
+did_update = true;
+end
+
+function finish_contour_edit(figure_handle, action)
+if isvalid(figure_handle)
+    setappdata(figure_handle, 'vtsegContourEditAction', action);
+    uiresume(figure_handle);
+end
+end
+
+function mask = redraw_mask_components(ax, Im, color, gs_range)
+cla(ax);
+h_img = imshow(Im, gs_range, 'Parent', ax);
+hold(ax, 'on');
+mask = false(size(Im));
+add_component = true;
+while add_component
+    [component, ~, ~] = draw_polygon_mask(ax, h_img, color);
+    mask = mask | component;
+    response = input('Add another disconnected component? [y/n] >> ', 's');
+    add_component = strcmpi(response, 'y');
+end
+end
+
+function updated = apply_mask_update(current, cropped_mask, display_crop, replace_entire_slice)
+if replace_entire_slice
+    updated = false(size(current));
+else
+    updated = current;
+end
+updated(display_crop.rows, display_crop.columns) = cropped_mask;
+end
+
+function errors = validate_slice_masks(Lendo, Rendo, Epi)
+Lendo = logical(Lendo);
+Rendo = logical(Rendo);
+Epi = logical(Epi);
+errors = {};
+if any(Lendo(:) & Rendo(:))
+    errors{end + 1} = 'LV and RV endocardial masks overlap.'; %#ok<AGROW>
+end
+if any(Lendo(:) & ~Epi(:))
+    errors{end + 1} = 'LV endocardium extends outside the epicardium.'; %#ok<AGROW>
+end
+if any(Rendo(:) & ~Epi(:))
+    errors{end + 1} = 'RV endocardium extends outside the epicardium.'; %#ok<AGROW>
+end
 end
 
 function [display_image, h_img] = show_slice_with_masks( ...
@@ -516,10 +697,6 @@ try
 catch
     warning('vtseg:DisplayCropIgnored', 'Unable to read the saved review crop.');
 end
-end
-
-function full_mask = replace_crop_mask(full_mask, cropped_mask, display_crop)
-full_mask(display_crop.rows, display_crop.columns) = cropped_mask;
 end
 
 function plot_mask_contour(ax, mask, color)

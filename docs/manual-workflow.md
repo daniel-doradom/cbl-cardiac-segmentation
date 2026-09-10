@@ -286,6 +286,7 @@ PYTHONPATH=src python -m vtseg export-matlab-seg \
   "$case/segmentation/bivme/lge_aligned/normalized" \
   --reference "$case/references/lge" \
   --output "$case/manual/matlab-source-START-END-COUNTslices" \
+  --slicer-approved \
   --start-slice START --end-slice END --slices COUNT
 ```
 
@@ -296,6 +297,7 @@ PYTHONPATH=src python -m vtseg export-matlab-seg \
   "$case/segmentation/bivme/lge_aligned/normalized" \
   --reference "$case/references/lge" \
   --output "$case/manual/matlab-source-025-100-20slices" \
+  --slicer-approved \
   --start-slice 25 --end-slice 100 --slices 20
 ```
 
@@ -309,6 +311,11 @@ the inclusive range.
 Each export gets its own output directory. This preserves the selected range,
 raw DICOM subset, mask stacks, and manifest together and prevents an accidental
 overwrite of a prior review.
+
+`--slicer-approved` is a required acknowledgment that the matching LGE image
+and labels were inspected in 3D Slicer. The exporter records the approval and
+UTC timestamp in both `manifest.json` and `provenance.json`; it does not collect
+reviewer identity.
 
 ## 5. Review, correct, and mesh in MATLAB
 
@@ -334,6 +341,22 @@ confirm. The crop is display-only: it does not crop DICOMs or masks. The same
 ROI is reused for the slice slider, fill toggle, fill-opacity slider,
 correction view, and final raw/contour overview figures. Its ignored case-local
 record is `seg/review_display_crop.json`.
+
+For each correction slice, press Enter or answer `n` to keep every imported
+mask unchanged, or answer `y` to choose an action for LV, RV, and Epi:
+
+- `keep` leaves that structure exactly as imported.
+- `edit` initializes draggable polygon vertices from the existing mask. All
+  disconnected components, including RV/RVOT components, remain available;
+  move the needed points and click **Accept contour edits**.
+- `redraw` discards that structure on the slice and draws one or more new
+  components from scratch.
+- `clear` removes that structure from the slice.
+
+MATLAB blocks acceptance when LV and RV overlap or either cavity extends
+outside Epi. Rejecting a correction restores that slice's original masks.
+After the final save, `myocardium.mat` is regenerated as
+`Epi & ~Lendo & ~Rendo`, keeping scar analysis and mesh geometry consistent.
 
 The viewer shows the current MATLAB mask number plus the raw DICOM filename,
 source number, and reference z-index. Use this information when deciding which

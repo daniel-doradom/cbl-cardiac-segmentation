@@ -155,6 +155,12 @@ def build_parser() -> argparse.ArgumentParser:
                                help="prepared case whose geometry the masks share")
     matlab_parser.add_argument("--output", required=True, type=Path)
     matlab_parser.add_argument(
+        "--slicer-approved",
+        action="store_true",
+        required=True,
+        help="confirm that the image/mask alignment was reviewed and approved in 3D Slicer",
+    )
+    matlab_parser.add_argument(
         "--slices",
         type=int,
         help="total slices within the selected range; both endpoints are retained",
@@ -305,6 +311,7 @@ def main(argv: list[str] | None = None) -> int:
                 start_slice=args.start_slice,
                 end_slice=args.end_slice,
                 slice_order=args.slice_order.replace("-", "_"),
+                slicer_approved=args.slicer_approved,
                 repo_root=_repo_root(),
             )
             print(f"exported {manifest['slice_count']} slices to {args.output}")

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from vtseg.dicom.series import InstanceRecord, Inventory
-from vtseg.errors import RegistrationError
+from vtseg.errors import NormalizationError, RegistrationError
 from vtseg.segmentation.bivme_lge import (
     align_bivme_to_lge,
     match_cine_frame,
@@ -363,12 +363,22 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
         reversed(range(image.shape[2]))
     )
 
+    unapproved_out = tmp_path / "matlab-case-unapproved"
+    with pytest.raises(NormalizationError, match="3D Slicer review"):
+        export_matlab_case(masks, reference, unapproved_out)
+    assert not unapproved_out.exists()
+
     out = tmp_path / "matlab-case"
-    manifest = export_matlab_case(masks, reference, out, start_slice=1, end_slice=5, slices=3)
+    manifest = export_matlab_case(
+        masks, reference, out, start_slice=1, end_slice=5, slices=3,
+        slicer_approved=True,
+    )
 
     assert manifest["slice_count"] == 3
     assert manifest["slice_order"] == "base_to_apex"
     assert manifest["slice_order_reason"] == "reference_last_endpoint_larger"
+    assert manifest["slicer_review"]["approved"] is True
+    assert manifest["slicer_review"]["approval_recorded_at"]
     assert [item["base_to_apex_reference_slice"] for item in manifest["slices"]] == [1, 3, 5]
     assert [s["dicom_file"] for s in manifest["slices"]] == sorted(
         s["dicom_file"] for s in manifest["slices"]
@@ -382,6 +392,11 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     for d in ("mesh", "remesh", "global", "visualizations"):
         assert (out / d).is_dir()
     assert (out / "manifest.json").is_file()
+    export_provenance = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
+    assert export_provenance["model_options"]["slicer_review"]["approved"] is True
+    assert export_provenance["model_options"]["slicer_review"]["approval_recorded_at"] == (
+        manifest["slicer_review"]["approval_recorded_at"]
+    )
 
     epi = loadmat(str(out / "seg" / "Epi.mat"))["Epi"]
     lendo = loadmat(str(out / "seg" / "Lendo.mat"))["Lendo"]
@@ -398,7 +413,8 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
 
     endpoint_out = tmp_path / "matlab-case-endpoints"
     endpoint_manifest = export_matlab_case(
-        masks, reference, endpoint_out, start_slice=1, end_slice=6, slices=4
+        masks, reference, endpoint_out, start_slice=1, end_slice=6, slices=4,
+        slicer_approved=True,
     )
     endpoint_indices = [item["reference_volume_index"] for item in endpoint_manifest["slices"]]
     assert endpoint_indices[0] == image.shape[2] - 1
@@ -406,7 +422,7 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     assert set(abs(right - left) for left, right in zip(endpoint_indices, endpoint_indices[1:])) <= {1, 2}
 
     dense_out = tmp_path / "matlab-case-dense"
-    dense_manifest = export_matlab_case(masks, reference, dense_out)
+    dense_manifest = export_matlab_case(masks, reference, dense_out, slicer_approved=True)
     assert dense_manifest["slice_count"] == image.shape[2]
     assert dense_manifest["slice_selection"] == "all_selected_range_slices"
     assert [s["reference_volume_index"] for s in dense_manifest["slices"]] == list(

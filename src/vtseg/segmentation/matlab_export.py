@@ -21,6 +21,7 @@ from vtseg.provenance import (
     git_commit,
     package_version,
     software_versions,
+    utc_now,
     write_json,
     write_provenance,
 )
@@ -161,11 +162,16 @@ def export_matlab_case(
     start_slice: int = 1,
     end_slice: int | None = None,
     slice_order: str = "base_to_apex",
+    slicer_approved: bool = False,
     repo_root: str | Path | None = None,
 ) -> dict[str, Any]:
     masks_path = Path(mask_directory).expanduser().resolve()
     reference = Path(reference_directory).expanduser().resolve()
     output = Path(output_directory).expanduser().resolve()
+    if not slicer_approved:
+        raise NormalizationError(
+            "MATLAB export requires completed 3D Slicer review; rerun with --slicer-approved"
+        )
     if output.exists():
         raise NormalizationError(f"refusing to overwrite existing MATLAB case: {output}")
 
@@ -214,6 +220,7 @@ def export_matlab_case(
         count=slices,
     )
     slice_selection = "all_selected_range_slices" if slices is None else "evenly_spaced_selected_range"
+    slicer_approval_time = utc_now()
 
     # MATLAB reads raw/ in lexical file-name order.  Give each copied source a
     # generated, zero-padded name so that this order is exactly NIfTI's z-index
@@ -261,6 +268,10 @@ def export_matlab_case(
         "slice_selection": slice_selection,
         "slice_order": slice_order,
         "slice_order_reason": order_reason,
+        "slicer_review": {
+            "approved": True,
+            "approval_recorded_at": slicer_approval_time,
+        },
         "start_slice_base_to_apex": start_slice,
         "end_slice_base_to_apex": end_slice if end_slice is not None else image.shape[2],
         "reference_index_steps": [
@@ -305,6 +316,10 @@ def export_matlab_case(
             "matlab_stack_order": "zero-padded generated raw file names match NIfTI z-index order",
             "matlab_geometry": "per-slice DICOM positions; supports nonuniform selected spacing",
             "info_mat": "not written; generate with readdata(raw_path, seg_path)",
+            "slicer_review": {
+                "approved": True,
+                "approval_recorded_at": slicer_approval_time,
+            },
         },
         device="cpu",
         output_files=[str(Path("raw") / name) for name in names]

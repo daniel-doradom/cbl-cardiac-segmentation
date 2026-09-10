@@ -78,9 +78,26 @@ the prepared CT volume.
 
 1. `CUDA_VISIBLE_DEVICES=GPU_ID`				$\rightarrow$ See `nvtop` and choose most free gpu.
 2. `study=data/diagnostics/CASE/Diagnostics` 	$\rightarrow$ Full MRI Exam path
-3. `case=results/nshaXX-mri` 						$\rightarrow$ decide an output_folder_name
+3. `case=results/legacy/nshaXX-mri-RUN_LABEL` 		$\rightarrow$ unique automatic-run folder
 4. `cineSeriesUid='xxxxx-xxxx-xxxxx-xxxx'` 		$\rightarrow$ cine short-axis series UID (see in Weasis)
 5. `lgeSeriesUid ='xxxxx-xxxx-xxxxx-xxxx'` 		$\rightarrow$ matching lge series UID (see in Weasis)
+
+### Output-folder rule
+
+Use `results/legacy/<case>-<run-label>` for every new automatic run, including
+retries with a different frame, view correction, or registration option. This
+preserves the raw result and prevents the pipeline's overwrite protection from
+blocking a distinct experiment.
+
+Use `results/best/<case>` only after the automatic masks and native LGE
+alignment have been inspected in 3D Slicer and selected for manual work. Copy
+the accepted candidate into `best` before exporting MATLAB slices; for example:
+
+```bash
+cp -a results/legacy/nsha03-post-v1 results/best/nsha03-post
+```
+
+Do not run a new automatic segmentation directly inside `results/best/`.
 
 On the server, from the repository root:
 
@@ -89,7 +106,7 @@ conda activate bivme311
 export CUDA_VISIBLE_DEVICES=GPU_ID
 
 study=data/diagnostics/CASE/Diagnostics
-case=results/nshaXX-mri
+case=results/legacy/nshaXX-mri-RUN_LABEL
 
 # Inventory the study, then inspect the JSON locally and choose an explicit
 # cine short-axis series UID and temporal frame (zero based). Replace these
@@ -205,7 +222,7 @@ echo "$DISPLAY"     # on server, expected: localhost:10.0
 Preserve the failed attempt and use a new case output:
 
 ```bash
-case=results/case-mri-adaptive
+case=results/legacy/case-mri-adaptive
 PYTHONPATH=src python -m vtseg prepare-series "$study" \
   --series "$cineSeriesUid" --frame "$frame" --output "$case"
 PYTHONPATH=src python -m vtseg segment-mri-bivme "$case" \

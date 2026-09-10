@@ -389,7 +389,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         'String', 'Keep / Next', 'Callback', @(~, ~) choose_navigation('next'));
     correct_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
         'Units', 'normalized', 'Position', [0.31 0.93 0.13 0.045], ...
-        'String', 'Correct', 'Callback', @(~, ~) choose_navigation('correct'));
+        'String', 'Modify', 'Callback', @(~, ~) choose_navigation('modify'));
     uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
         'Position', [0.46 0.935 0.07 0.035], 'String', 'Go to slice', ...
         'BackgroundColor', 'w');
@@ -459,11 +459,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         end
 
         if strcmp(action, 'finish')
+            set(navigation_controls, 'Enable', 'off');
             save_confirmed = confirm_review_save();
             return;
         end
 
-        if strcmp(action, 'correct')
+        if strcmp(action, 'modify')
             old_Lendo = Lendo(:, :, k);
             old_Rendo = Rendo(:, :, k);
             old_Epi = Epi(:, :, k);
@@ -499,10 +500,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
                     for error_index = 1:numel(validation_errors)
                         fprintf('  - %s\n', validation_errors{error_index});
                     end
-                    invalid_action = questdlg( ...
-                        'Revise the current edits or discard them?', ...
-                        'Invalid correction', 'Revise', 'Discard', 'Revise');
-                    if ~strcmp(invalid_action, 'Revise')
+                    invalid_action = choose_review_action(figure_handle, ...
+                        'Invalid correction', {'Revise', 'revise'; 'Discard edits', 'discard'});
+                    if ~isvalid(figure_handle)
+                        return;
+                    end
+                    if ~strcmp(invalid_action, 'revise')
                         candidate_Lendo(:, :, k) = old_Lendo;
                         candidate_Rendo(:, :, k) = old_Rendo;
                         candidate_Epi(:, :, k) = old_Epi;
@@ -522,11 +525,14 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             show_slice_with_masks( ...
                 ax, path_image, folder(k).name, gs_range, k, ...
                 Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
-            keep_str = questdlg('Keep these corrections?', 'Confirm correction', ...
-                'Keep', 'Discard', 'Keep');
+            keep_str = choose_review_action(figure_handle, ...
+                'Keep these modifications?', {'Keep changes', 'keep'; 'Discard changes', 'discard'});
+            if ~isvalid(figure_handle)
+                return;
+            end
             set(navigation_controls, 'Enable', 'on');
 
-            if strcmp(keep_str, 'Keep')
+            if strcmp(keep_str, 'keep')
                 k = k + 1;
             else
                 Lendo(:, :, k) = old_Lendo;
@@ -539,6 +545,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         end
     end
 
+    set(navigation_controls, 'Enable', 'off');
     save_confirmed = confirm_review_save();
 
     function choose_navigation(action)
@@ -557,9 +564,9 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     end
 
     function confirmed = confirm_review_save()
-        response = questdlg('Save reviewed/corrected masks?', 'Finish review', ...
-            'Save', 'Discard', 'Save');
-        confirmed = strcmp(response, 'Save');
+        response = choose_review_action(figure_handle, 'Finish review', ...
+            {'Save reviewed masks', 'save'; 'Discard review', 'discard'});
+        confirmed = strcmp(response, 'save');
     end
 
     function on_display_control_change(~, ~)
@@ -597,10 +604,9 @@ end
 function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
 
-    prompt = 'LV endocardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
     current_mask = Lendo(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
-        ax, display_image, current_mask, prompt, 'r', gs_range);
+        ax, display_image, current_mask, 'LV endocardium', 'r', gs_range);
     if did_update
         Lendo(:, :, k) = apply_mask_update( ...
             Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -608,10 +614,9 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
             ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
-    prompt = 'RV endocardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
     current_mask = Rendo(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
-        ax, display_image, current_mask, prompt, 'c', gs_range);
+        ax, display_image, current_mask, 'RV endocardium', 'c', gs_range);
     if did_update
         Rendo(:, :, k) = apply_mask_update( ...
             Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -619,10 +624,9 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
             ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
-    prompt = 'Epicardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
     current_mask = Epi(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
-        ax, display_image, current_mask, prompt, 'g', gs_range);
+        ax, display_image, current_mask, 'Epicardium', 'g', gs_range);
     if did_update
         Epi(:, :, k) = apply_mask_update( ...
             Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -631,10 +635,9 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
     end
 
     if has_lepi
-        prompt = 'LV epicardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
         current_mask = lepi(display_crop.rows, display_crop.columns, k);
         [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
-            ax, display_image, current_mask, prompt, 'b', gs_range);
+            ax, display_image, current_mask, 'LV epicardium', 'b', gs_range);
         if did_update
             lepi(:, :, k) = apply_mask_update( ...
                 lepi(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -661,40 +664,38 @@ function show_current_correction_masks( ...
 end
 
 function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
-        ax, Im, current_mask, prompt, color, gs_range)
+        ax, Im, current_mask, structure_name, color, gs_range)
     did_update = false;
     replace_entire_slice = false;
     mask = logical(current_mask);
 
-    str = input(prompt, 's');
-    if isempty(str)
-        str = 'keep';
-    end
+    figure_handle = ancestor(ax, 'figure');
+    action = choose_review_action(figure_handle, ...
+        sprintf('%s action', structure_name), ...
+        {'Keep', 'keep'; 'Edit', 'edit'; 'Redraw', 'redraw'; 'Clear', 'clear'});
 
-    if strcmpi(str, 'keep') || strcmpi(str, 'k') || strcmpi(str, 'n')
+    if strcmp(action, 'keep') || strcmp(action, 'cancel')
         return;
     end
 
-    if strcmpi(str, 'clear') || strcmpi(str, 'c')
+    if strcmp(action, 'clear')
         mask = false(size(Im));
         did_update = true;
         replace_entire_slice = true;
         return;
     end
 
-    if strcmpi(str, 'edit') || strcmpi(str, 'e')
+    if strcmp(action, 'edit')
         [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range);
         return;
     end
 
-    if strcmpi(str, 'redraw') || strcmpi(str, 'r') || strcmpi(str, 'y')
+    if strcmp(action, 'redraw')
         mask = redraw_mask_components(ax, Im, color, gs_range);
         did_update = true;
         replace_entire_slice = true;
         return;
     end
-
-    fprintf('Unknown action "%s"; keeping the existing mask.\n', str);
 end
 
 function [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range)
@@ -795,6 +796,7 @@ end
 
 function mask = redraw_mask_components(ax, Im, color, gs_range)
 [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
+figure_handle = ancestor(ax, 'figure');
 cla(ax);
 h_img = imshow(Im, display_gs_range, 'Parent', ax);
 hold(ax, 'on');
@@ -803,8 +805,53 @@ add_component = true;
 while add_component
     [component, ~, ~] = draw_polygon_mask(ax, h_img, color, contour_width);
     mask = mask | component;
-    response = input('Add another disconnected component? [y/n] >> ', 's');
-    add_component = strcmpi(response, 'y');
+    action = choose_review_action(figure_handle, ...
+        'Add another disconnected component?', ...
+        {'Add component', 'add'; 'Finish redraw', 'finish'});
+    add_component = strcmp(action, 'add');
+end
+end
+
+function action = choose_review_action(figure_handle, prompt, choices)
+%CHOOSE_REVIEW_ACTION Present one modal action panel inside the review figure.
+action = 'cancel';
+if ~isvalid(figure_handle)
+    return;
+end
+
+setappdata(figure_handle, 'vtsegReviewChoice', '');
+panel = uipanel(figure_handle, 'Units', 'normalized', ...
+    'Position', [0.74 0.05 0.23 0.18], 'Title', prompt, ...
+    'BackgroundColor', 'w');
+choice_count = size(choices, 1);
+for index = 1:choice_count
+    row = floor((index - 1) / 2);
+    column = mod(index - 1, 2);
+    width = 0.42;
+    height = 0.30;
+    x = 0.06 + column * 0.47;
+    y = 0.58 - row * 0.36;
+    uicontrol(panel, 'Style', 'pushbutton', 'Units', 'normalized', ...
+        'Position', [x y width height], 'String', choices{index, 1}, ...
+        'Callback', @(~, ~) finish_review_action(figure_handle, choices{index, 2}));
+end
+
+uiwait(figure_handle);
+if isvalid(figure_handle)
+    selected = getappdata(figure_handle, 'vtsegReviewChoice');
+    if ~isempty(selected)
+        action = selected;
+    end
+    if isvalid(panel)
+        delete(panel);
+    end
+end
+end
+
+function finish_review_action(figure_handle, action)
+if isvalid(figure_handle)
+    setappdata(figure_handle, 'vtsegReviewChoice', action);
+    uiresume(figure_handle);
 end
 end
 

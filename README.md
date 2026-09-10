@@ -159,7 +159,9 @@ mask extent. `--start-slice`
 and `--end-slice` are one-based positions in that order; `--slices` retains
 both endpoints and distributes intermediate slices as evenly as possible. In MATLAB, run
 `vtseg.main_bivme_lge_tetmesh` from the tracked `matlab/` directory (after
-`setup_vtseg` verifies a separately installed iso2mesh)
+`setup_vtseg` verifies an ignored repo-local `<repo>/.external/iso2mesh`
+installation when present, or a separately installed iso2mesh configured by
+`VTSEG_ISO2MESH`)
 with the exported case directory; it opens the imported masks for correction,
 then produces the legacy biventricular mesh outputs. Pass `true` as its third
 argument to launch the manual LGE scar workflow before meshing.

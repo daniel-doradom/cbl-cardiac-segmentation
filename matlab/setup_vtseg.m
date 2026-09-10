@@ -9,6 +9,14 @@ matlab_root = fileparts(mfilename('fullpath'));
 addpath(matlab_root);
 iso2mesh_path = char(parser.Results.Iso2meshPath);
 if isempty(iso2mesh_path)
+    % Keep optional third-party dependencies next to the repository without
+    % placing their source or binaries under version control.
+    repo_local_iso2mesh = fullfile(fileparts(matlab_root), '.external', 'iso2mesh');
+    if isfolder(repo_local_iso2mesh)
+        iso2mesh_path = repo_local_iso2mesh;
+    end
+end
+if isempty(iso2mesh_path)
     % A preceding explicit setup call has already added iso2mesh to MATLAB's
     % path. Reuse it when workflow functions perform their own setup check.
     existing_surf2mesh = which('surf2mesh');
@@ -18,7 +26,8 @@ if isempty(iso2mesh_path)
 end
 if isempty(iso2mesh_path) || ~isfolder(iso2mesh_path)
     error('vtseg:Iso2meshMissing', ['iso2mesh is required for mesh generation. Set VTSEG_ISO2MESH or call ', ...
-        'setup_vtseg(''Iso2meshPath'', ''/authorized/path/to/iso2mesh'').']);
+        'setup_vtseg(''Iso2meshPath'', ''/authorized/path/to/iso2mesh''), or install it at ', ...
+        '<repo>/.external/iso2mesh.']);
 end
 addpath(iso2mesh_path);
 if isempty(which('surf2mesh')) || isempty(which('plotmesh'))

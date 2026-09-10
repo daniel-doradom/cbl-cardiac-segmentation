@@ -7,9 +7,11 @@ ignored `results/<case>/manual/matlab/` case directory.
 ## Prerequisites
 
 - MATLAB with Image Processing Toolbox.
-- A compatible, separately installed iso2mesh checkout. Set
-  `VTSEG_ISO2MESH` to that checkout before starting MATLAB. The setup function
-  verifies `surf2mesh` and `plotmesh`; iso2mesh is not vendored here.
+- A compatible iso2mesh checkout. The recommended local location is
+  `<repo>/.external/iso2mesh`; it is ignored by Git, so Iso2Mesh source and
+  any separately licensed binaries are not redistributed by this repository.
+  Alternatively, set `VTSEG_ISO2MESH` or pass `Iso2meshPath`. The setup
+  function verifies `surf2mesh` and `plotmesh`; iso2mesh is not vendored here.
 
 ## Run
 
@@ -20,7 +22,7 @@ rehash
 
 repoRoot = '/path/to/vt-segmentation-eval';
 addpath(fullfile(repoRoot, 'matlab'));
-setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh');
+setup_vtseg(); % Finds <repo>/.external/iso2mesh when installed there.
 
 caseDirectory = fullfile(repoRoot, 'results', 'case-name', 'manual', 'matlab');
 vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);

@@ -338,9 +338,9 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     save_confirmed = false;
 
     figure_handle = figure('Name', 'Review/correct masks', ...
-        'NumberTitle', 'off', 'Color', 'w');
+        'NumberTitle', 'off', 'Color', 'w', 'CloseRequestFcn', @quit_review);
     ax = axes('Parent', figure_handle, 'Units', 'normalized', ...
-        'Position', [0.05 0.12 0.67 0.80]);
+        'Position', [0.05 0.12 0.67 0.77]);
 
     reference_image = double(read_slice_image(path_image, folder(1).name));
     [window_limits, initial_window] = review_window_limits(reference_image, gs_range);
@@ -381,6 +381,33 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         'display_text', display_text));
     update_display_control_text();
 
+    previous_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
+        'Units', 'normalized', 'Position', [0.05 0.93 0.11 0.045], ...
+        'String', 'Previous', 'Callback', @(~, ~) choose_navigation('previous'));
+    next_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
+        'Units', 'normalized', 'Position', [0.17 0.93 0.13 0.045], ...
+        'String', 'Keep / Next', 'Callback', @(~, ~) choose_navigation('next'));
+    correct_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
+        'Units', 'normalized', 'Position', [0.31 0.93 0.13 0.045], ...
+        'String', 'Correct', 'Callback', @(~, ~) choose_navigation('correct'));
+    uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
+        'Position', [0.46 0.935 0.07 0.035], 'String', 'Go to slice', ...
+        'BackgroundColor', 'w');
+    slice_field = uicontrol(figure_handle, 'Style', 'edit', 'Units', 'normalized', ...
+        'Position', [0.54 0.93 0.06 0.045], 'String', '1', ...
+        'Callback', @(~, ~) choose_navigation('jump'));
+    jump_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
+        'Units', 'normalized', 'Position', [0.61 0.93 0.07 0.045], ...
+        'String', 'Go', 'Callback', @(~, ~) choose_navigation('jump'));
+    finish_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
+        'Units', 'normalized', 'Position', [0.69 0.93 0.12 0.045], ...
+        'String', 'Finish review', 'Callback', @(~, ~) choose_navigation('finish'));
+    quit_button = uicontrol(figure_handle, 'Style', 'pushbutton', ...
+        'Units', 'normalized', 'Position', [0.82 0.93 0.13 0.045], ...
+        'String', 'Quit without saving', 'Callback', @(~, ~) choose_navigation('quit'));
+    navigation_controls = [previous_button, next_button, correct_button, ...
+        slice_field, jump_button, finish_button, quit_button];
+
     k = 1;
 
     while k <= last_segmented_slice
@@ -393,39 +420,50 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             ax, path_image, folder(k).name, gs_range, k, ...
             Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
 
-        prompt = sprintf( ...
-            'Slice %d/%d correction? [y/n/back(b)/quit/#] >> ', ...
-            k, last_segmented_slice);
-        str = input(prompt, 's');
-
-        if isempty(str) || strcmpi(str, 'n')
-            k = k + 1;
-            continue;
+        set(slice_field, 'String', num2str(k));
+        setappdata(figure_handle, 'vtsegReviewNavigationAction', '');
+        uiwait(figure_handle);
+        if ~isvalid(figure_handle)
+            disp('Review window was closed. Masks will not be saved.');
+            return;
         end
+        action = getappdata(figure_handle, 'vtsegReviewNavigationAction');
 
-        target_slice = str2double(str);
-        if ~isnan(target_slice)
-            target_slice = round(target_slice);
-            if target_slice >= 1 && target_slice <= last_segmented_slice
-                k = target_slice;
-            else
-                fprintf('Slice must be between 1 and %d.\n', ...
-                    last_segmented_slice);
-            end
-            continue;
-        end
-
-        if strcmpi(str, 'back') || strcmpi(str, 'b')
+        if strcmp(action, 'previous')
             k = max(1, k - 1);
             continue;
         end
 
-        if strcmpi(str, 'quit')
+        if strcmp(action, 'next')
+            k = k + 1;
+            continue;
+        end
+
+        if strcmp(action, 'jump')
+            target_slice = str2double(get(slice_field, 'String'));
+            if ~isnan(target_slice)
+                target_slice = round(target_slice);
+            end
+            if isnan(target_slice) || target_slice < 1 || target_slice > last_segmented_slice
+                errordlg(sprintf('Slice must be between 1 and %d.', last_segmented_slice), ...
+                    'Invalid slice');
+            else
+                k = target_slice;
+            end
+            continue;
+        end
+
+        if strcmp(action, 'quit')
             disp('Review was quit before final confirmation. Masks will not be saved.');
             return;
         end
 
-        if strcmpi(str, 'y')
+        if strcmp(action, 'finish')
+            save_confirmed = confirm_review_save();
+            return;
+        end
+
+        if strcmp(action, 'correct')
             old_Lendo = Lendo(:, :, k);
             old_Rendo = Rendo(:, :, k);
             old_Epi = Epi(:, :, k);
@@ -438,6 +476,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             candidate_Epi = Epi;
             candidate_lepi = lepi;
             correction_valid = false;
+            set(navigation_controls, 'Enable', 'off');
 
             while ~correction_valid
                 [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi] = ...
@@ -460,9 +499,10 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
                     for error_index = 1:numel(validation_errors)
                         fprintf('  - %s\n', validation_errors{error_index});
                     end
-                    invalid_action = input( ...
-                        'Revise the current edits or discard them? [revise/discard] >> ', 's');
-                    if ~strcmpi(invalid_action, 'revise')
+                    invalid_action = questdlg( ...
+                        'Revise the current edits or discard them?', ...
+                        'Invalid correction', 'Revise', 'Discard', 'Revise');
+                    if ~strcmp(invalid_action, 'Revise')
                         candidate_Lendo(:, :, k) = old_Lendo;
                         candidate_Rendo(:, :, k) = old_Rendo;
                         candidate_Epi(:, :, k) = old_Epi;
@@ -482,9 +522,11 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             show_slice_with_masks( ...
                 ax, path_image, folder(k).name, gs_range, k, ...
                 Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
-            keep_str = input('Keep these corrections? [y/n] >> ', 's');
+            keep_str = questdlg('Keep these corrections?', 'Confirm correction', ...
+                'Keep', 'Discard', 'Keep');
+            set(navigation_controls, 'Enable', 'on');
 
-            if isempty(keep_str) || strcmpi(keep_str, 'y')
+            if strcmp(keep_str, 'Keep')
                 k = k + 1;
             else
                 Lendo(:, :, k) = old_Lendo;
@@ -497,8 +539,28 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         end
     end
 
-    save_str = input('Save reviewed/corrected masks? [y/n] >> ', 's');
-    save_confirmed = isempty(save_str) || strcmpi(save_str, 'y');
+    save_confirmed = confirm_review_save();
+
+    function choose_navigation(action)
+        if isvalid(figure_handle)
+            setappdata(figure_handle, 'vtsegReviewNavigationAction', action);
+            uiresume(figure_handle);
+        end
+    end
+
+    function quit_review(~, ~)
+        if isvalid(figure_handle)
+            setappdata(figure_handle, 'vtsegReviewNavigationAction', 'quit');
+            uiresume(figure_handle);
+            delete(figure_handle);
+        end
+    end
+
+    function confirmed = confirm_review_save()
+        response = questdlg('Save reviewed/corrected masks?', 'Finish review', ...
+            'Save', 'Discard', 'Save');
+        confirmed = strcmp(response, 'Save');
+    end
 
     function on_display_control_change(~, ~)
         [current_window, contour_width] = current_review_display_settings(ax, gs_range);

@@ -311,8 +311,11 @@ plot_final_segmentation_overview( ...
 
 end
 
-function [BW, xj, yj] = draw_polygon_mask(ax, image_handle, color)
-    roi = drawpolygon(ax, 'Color', color, 'LineWidth', 1, 'FaceAlpha', 0.25);
+function [BW, xj, yj] = draw_polygon_mask(ax, image_handle, color, line_width)
+    if nargin < 4
+        line_width = 1;
+    end
+    roi = drawpolygon(ax, 'Color', color, 'LineWidth', line_width, 'FaceAlpha', 0.25);
     wait(roi);
 
     if isempty(roi) || ~isvalid(roi) || isempty(roi.Position)
@@ -335,8 +338,44 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     save_confirmed = false;
 
     figure_handle = figure('Name', 'Review/correct masks', ...
-        'NumberTitle', 'off');
-    ax = axes('Parent', figure_handle);
+        'NumberTitle', 'off', 'Color', 'w');
+    ax = axes('Parent', figure_handle, 'Units', 'normalized', ...
+        'Position', [0.05 0.12 0.67 0.80]);
+
+    reference_image = double(read_slice_image(path_image, folder(1).name));
+    [window_limits, initial_window] = review_window_limits(reference_image, gs_range);
+    window_center = min(window_limits(2), max(window_limits(1), mean(initial_window)));
+    window_width = diff(initial_window);
+    window_span = diff(window_limits);
+    minimum_width = max(window_span / 1000, eps(window_span));
+
+    uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
+        'Position', [0.77 0.80 0.18 0.04], 'String', 'Window center', ...
+        'BackgroundColor', 'w');
+    center_slider = uicontrol(figure_handle, 'Style', 'slider', 'Units', 'normalized', ...
+        'Position', [0.77 0.75 0.18 0.04], 'Min', window_limits(1), ...
+        'Max', window_limits(2), 'Value', window_center, ...
+        'SliderStep', [0.01 0.10], 'Callback', @on_display_control_change);
+    uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
+        'Position', [0.77 0.67 0.18 0.04], 'String', 'Window width', ...
+        'BackgroundColor', 'w');
+    width_slider = uicontrol(figure_handle, 'Style', 'slider', 'Units', 'normalized', ...
+        'Position', [0.77 0.62 0.18 0.04], 'Min', minimum_width, ...
+        'Max', window_span, 'Value', max(minimum_width, min(window_span, window_width)), ...
+        'SliderStep', [0.01 0.10], 'Callback', @on_display_control_change);
+    uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
+        'Position', [0.77 0.54 0.18 0.04], 'String', 'Contour width', ...
+        'BackgroundColor', 'w');
+    contour_width_slider = uicontrol(figure_handle, 'Style', 'slider', 'Units', 'normalized', ...
+        'Position', [0.77 0.49 0.18 0.04], 'Min', 0.1, 'Max', 4, 'Value', 1.5, ...
+        'SliderStep', [0.05 / 3.9 0.5 / 3.9], 'Callback', @on_display_control_change);
+    display_text = uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
+        'Position', [0.77 0.34 0.20 0.10], 'HorizontalAlignment', 'left', ...
+        'BackgroundColor', 'w');
+    setappdata(figure_handle, 'vtsegReviewDisplayControls', struct( ...
+        'center_slider', center_slider, 'width_slider', width_slider, ...
+        'contour_width_slider', contour_width_slider, 'display_text', display_text));
+    update_display_control_text();
 
     k = 1;
 
@@ -456,6 +495,27 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
 
     save_str = input('Save reviewed/corrected masks? [y/n] >> ', 's');
     save_confirmed = isempty(save_str) || strcmpi(save_str, 'y');
+
+    function on_display_control_change(~, ~)
+        [current_window, contour_width] = current_review_display_settings(ax, gs_range);
+        image_handles = findobj(ax, 'Type', 'image');
+        if ~isempty(image_handles)
+            set(ax, 'CLim', current_window);
+        end
+        contour_handles = findobj(ax, 'Type', 'contour');
+        if ~isempty(contour_handles)
+            set(contour_handles, 'LineWidth', contour_width);
+        end
+        update_display_control_text();
+        drawnow;
+    end
+
+    function update_display_control_text()
+        [current_window, contour_width] = current_review_display_settings(ax, gs_range);
+        set(display_text, 'String', sprintf( ...
+            'Center: %.1f\nWidth: %.1f\nContours: %.2f', ...
+            mean(current_window), diff(current_window), contour_width));
+    end
 end
 
 function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
@@ -510,14 +570,15 @@ end
 
 function show_current_correction_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
+    [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
     cla(ax);
-    imshow(display_image, gs_range, 'Parent', ax);
+    imshow(display_image, display_gs_range, 'Parent', ax);
     hold(ax, 'on');
-    plot_mask_contour(ax, Lendo(display_crop.rows, display_crop.columns, k), 'r');
-    plot_mask_contour(ax, Rendo(display_crop.rows, display_crop.columns, k), 'c');
-    plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns, k), 'g');
+    plot_mask_contour(ax, Lendo(display_crop.rows, display_crop.columns, k), 'r', contour_width);
+    plot_mask_contour(ax, Rendo(display_crop.rows, display_crop.columns, k), 'c', contour_width);
+    plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns, k), 'g', contour_width);
     if has_lepi
-        plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b');
+        plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b', contour_width);
     end
     title(ax, sprintf('Slice %d correction preview', k));
     drawnow;
@@ -569,17 +630,18 @@ if isempty(contours)
     return;
 end
 
+[display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
 cla(ax);
-imshow(Im, gs_range, 'Parent', ax);
+imshow(Im, display_gs_range, 'Parent', ax);
 hold(ax, 'on');
-plot_mask_contour(ax, mask, color);
+plot_mask_contour(ax, mask, color, contour_width);
 
 rois = cell(numel(contours), 1);
 for index = 1:numel(contours)
     rois{index} = drawpolygon(ax, ...
         'Position', contours(index).Position, ...
         'Color', color, ...
-        'LineWidth', 1.5, ...
+        'LineWidth', contour_width, ...
         'FaceAlpha', 0.10);
 end
 title(ax, 'Drag contour vertices, then accept or cancel below');
@@ -635,13 +697,14 @@ end
 end
 
 function mask = redraw_mask_components(ax, Im, color, gs_range)
+[display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
 cla(ax);
-h_img = imshow(Im, gs_range, 'Parent', ax);
+h_img = imshow(Im, display_gs_range, 'Parent', ax);
 hold(ax, 'on');
 mask = false(size(Im));
 add_component = true;
 while add_component
-    [component, ~, ~] = draw_polygon_mask(ax, h_img, color);
+    [component, ~, ~] = draw_polygon_mask(ax, h_img, color, contour_width);
     mask = mask | component;
     response = input('Add another disconnected component? [y/n] >> ', 's');
     add_component = strcmpi(response, 'y');
@@ -680,21 +743,59 @@ function [display_image, h_img] = show_slice_with_masks( ...
     f_info = dicominfo(f);
     Im = dicomread(f_info);
     display_image = Im(display_crop.rows, display_crop.columns);
+    [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
 
     cla(ax);
-    h_img = imshow(display_image, gs_range, 'Parent', ax);
+    h_img = imshow(display_image, display_gs_range, 'Parent', ax);
     hold(ax, 'on');
 
-    plot_mask_contour(ax, Lendo(display_crop.rows, display_crop.columns, k), 'r');
-    plot_mask_contour(ax, Rendo(display_crop.rows, display_crop.columns, k), 'c');
-    plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns, k), 'g');
+    plot_mask_contour(ax, Lendo(display_crop.rows, display_crop.columns, k), 'r', contour_width);
+    plot_mask_contour(ax, Rendo(display_crop.rows, display_crop.columns, k), 'c', contour_width);
+    plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns, k), 'g', contour_width);
 
     if has_lepi
-        plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b');
+        plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b', contour_width);
     end
 
     title(ax, sprintf('Slice %d: %s', k, file_name), 'Interpreter', 'none');
     drawnow;
+end
+
+function [limits, initial_window] = review_window_limits(image, requested_window)
+    finite_pixels = image(isfinite(image));
+    if isempty(finite_pixels)
+        limits = [0 1];
+    else
+        limits = [min(finite_pixels(:)) max(finite_pixels(:))];
+        if limits(1) == limits(2)
+            limits = limits + [-0.5 0.5];
+        end
+    end
+    if isempty(requested_window)
+        initial_window = limits;
+    else
+        initial_window = sort(double(requested_window(:)'));
+        if numel(initial_window) ~= 2 || initial_window(1) == initial_window(2)
+            initial_window = limits;
+        end
+    end
+end
+
+function [display_gs_range, contour_width] = current_review_display_settings(ax, fallback_gs_range)
+    display_gs_range = fallback_gs_range;
+    contour_width = 1.5;
+    figure_handle = ancestor(ax, 'figure');
+    if isempty(figure_handle) || ~isvalid(figure_handle)
+        return;
+    end
+    controls = getappdata(figure_handle, 'vtsegReviewDisplayControls');
+    if isempty(controls)
+        return;
+    end
+    center = get(controls.center_slider, 'Value');
+    width = get(controls.width_slider, 'Value');
+    display_gs_range = [center - width / 2, center + width / 2];
+    contour_width = get(controls.contour_width_slider, 'Value');
 end
 
 function display_crop = load_display_crop(path_out, image_height, image_width)
@@ -722,11 +823,14 @@ catch
 end
 end
 
-function plot_mask_contour(ax, mask, color)
+function plot_mask_contour(ax, mask, color, line_width)
+    if nargin < 4
+        line_width = 1.5;
+    end
     mask = logical(mask);
 
     if any(mask(:)) && any(~mask(:))
-        contour(ax, mask, [0.5 0.5], color, 'LineWidth', 1.5);
+        contour(ax, mask, [0.5 0.5], color, 'LineWidth', line_width);
     end
 end
 

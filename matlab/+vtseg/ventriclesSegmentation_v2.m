@@ -461,43 +461,66 @@ end
 function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
 
-    prompt = 'LV endocardium action? [keep/edit/redraw/clear] >> ';
+    prompt = 'LV endocardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
     current_mask = Lendo(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
         ax, display_image, current_mask, prompt, 'r', gs_range);
     if did_update
         Lendo(:, :, k) = apply_mask_update( ...
             Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
+        show_current_correction_masks( ...
+            ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
-    prompt = 'RV endocardium action? [keep/edit/redraw/clear] >> ';
+    prompt = 'RV endocardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
     current_mask = Rendo(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
         ax, display_image, current_mask, prompt, 'c', gs_range);
     if did_update
         Rendo(:, :, k) = apply_mask_update( ...
             Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
+        show_current_correction_masks( ...
+            ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
-    prompt = 'Epicardium action? [keep/edit/redraw/clear] >> ';
+    prompt = 'Epicardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
     current_mask = Epi(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
         ax, display_image, current_mask, prompt, 'g', gs_range);
     if did_update
         Epi(:, :, k) = apply_mask_update( ...
             Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
+        show_current_correction_masks( ...
+            ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
     if has_lepi
-        prompt = 'LV epicardium action? [keep/edit/redraw/clear] >> ';
+        prompt = 'LV epicardium action? [keep(k)/edit(e)/redraw(r)/clear(c)] >> ';
         current_mask = lepi(display_crop.rows, display_crop.columns, k);
         [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
             ax, display_image, current_mask, prompt, 'b', gs_range);
         if did_update
             lepi(:, :, k) = apply_mask_update( ...
                 lepi(:, :, k), new_mask, display_crop, replace_entire_slice);
+            show_current_correction_masks( ...
+                ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
         end
     end
+end
+
+function show_current_correction_masks( ...
+        ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
+    cla(ax);
+    imshow(display_image, gs_range, 'Parent', ax);
+    hold(ax, 'on');
+    plot_mask_contour(ax, Lendo(display_crop.rows, display_crop.columns, k), 'r');
+    plot_mask_contour(ax, Rendo(display_crop.rows, display_crop.columns, k), 'c');
+    plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns, k), 'g');
+    if has_lepi
+        plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b');
+    end
+    title(ax, sprintf('Slice %d correction preview', k));
+    drawnow;
 end
 
 function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
@@ -515,7 +538,7 @@ function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
         return;
     end
 
-    if strcmpi(str, 'clear')
+    if strcmpi(str, 'clear') || strcmpi(str, 'c')
         mask = false(size(Im));
         did_update = true;
         replace_entire_slice = true;

@@ -369,12 +369,16 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     contour_width_slider = uicontrol(figure_handle, 'Style', 'slider', 'Units', 'normalized', ...
         'Position', [0.77 0.49 0.18 0.04], 'Min', 0.1, 'Max', 4, 'Value', 1.5, ...
         'SliderStep', [0.05 / 3.9 0.5 / 3.9], 'Callback', @on_display_control_change);
+    contour_toggle = uicontrol(figure_handle, 'Style', 'togglebutton', 'Units', 'normalized', ...
+        'Position', [0.77 0.42 0.18 0.05], 'String', 'Show contours', 'Value', 1, ...
+        'Callback', @on_display_control_change);
     display_text = uicontrol(figure_handle, 'Style', 'text', 'Units', 'normalized', ...
-        'Position', [0.77 0.34 0.20 0.10], 'HorizontalAlignment', 'left', ...
+        'Position', [0.77 0.27 0.20 0.10], 'HorizontalAlignment', 'left', ...
         'BackgroundColor', 'w');
     setappdata(figure_handle, 'vtsegReviewDisplayControls', struct( ...
         'center_slider', center_slider, 'width_slider', width_slider, ...
-        'contour_width_slider', contour_width_slider, 'display_text', display_text));
+        'contour_width_slider', contour_width_slider, 'contour_toggle', contour_toggle, ...
+        'display_text', display_text));
     update_display_control_text();
 
     k = 1;
@@ -504,7 +508,11 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         end
         contour_handles = findobj(ax, 'Type', 'contour');
         if ~isempty(contour_handles)
-            set(contour_handles, 'LineWidth', contour_width);
+            if contour_width <= 0
+                set(contour_handles, 'Visible', 'off');
+            else
+                set(contour_handles, 'Visible', 'on', 'LineWidth', contour_width);
+            end
         end
         update_display_control_text();
         drawnow;
@@ -512,9 +520,14 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
 
     function update_display_control_text()
         [current_window, contour_width] = current_review_display_settings(ax, gs_range);
+        if contour_width <= 0
+            contour_label = 'Contours: hidden';
+        else
+            contour_label = sprintf('Contours: %.2f', contour_width);
+        end
         set(display_text, 'String', sprintf( ...
-            'Center: %.1f\nWidth: %.1f\nContours: %.2f', ...
-            mean(current_window), diff(current_window), contour_width));
+            'Center: %.1f\nWidth: %.1f\n%s', ...
+            mean(current_window), diff(current_window), contour_label));
     end
 end
 
@@ -795,7 +808,11 @@ function [display_gs_range, contour_width] = current_review_display_settings(ax,
     center = get(controls.center_slider, 'Value');
     width = get(controls.width_slider, 'Value');
     display_gs_range = [center - width / 2, center + width / 2];
-    contour_width = get(controls.contour_width_slider, 'Value');
+    if get(controls.contour_toggle, 'Value')
+        contour_width = get(controls.contour_width_slider, 'Value');
+    else
+        contour_width = 0;
+    end
 end
 
 function display_crop = load_display_crop(path_out, image_height, image_width)
@@ -829,7 +846,7 @@ function plot_mask_contour(ax, mask, color, line_width)
     end
     mask = logical(mask);
 
-    if any(mask(:)) && any(~mask(:))
+    if line_width > 0 && any(mask(:)) && any(~mask(:))
         contour(ax, mask, [0.5 0.5], color, 'LineWidth', line_width);
     end
 end

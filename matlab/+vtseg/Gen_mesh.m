@@ -85,9 +85,9 @@ p7 = patch(volobj, 'FaceColor', 'g', 'EdgeColor', 'r');
 title('Combined surface');
 
 % labeling the surface mesh nodes to differentiate epi , lendo and rendo
-[epidist,eq] = getDistance(vol_sur.vertices,epi_sur.vertices);
-[lendodist,eq] = getDistance(vol_sur.vertices,lendo_sur.vertices);
-[rendodist,eq] = getDistance(vol_sur.vertices,rendo_sur.vertices);
+[epidist,eq] = vtseg.getDistance(vol_sur.vertices,epi_sur.vertices);
+[lendodist,eq] = vtseg.getDistance(vol_sur.vertices,lendo_sur.vertices);
+[rendodist,eq] = vtseg.getDistance(vol_sur.vertices,rendo_sur.vertices);
 e=0;
 l=0;
 r=0;
@@ -112,7 +112,7 @@ for i = 1:size(epidist,1)
     end
 end
 %% thhis is in case you want to ignore the RV
-%[rendodist,eq] = getDistance(vol_sur.vertices,rendo_sur.vertices);
+%[rendodist,eq] = vtseg.getDistance(vol_sur.vertices,rendo_sur.vertices);
 
 % e=0;
 % l=0;

@@ -94,8 +94,8 @@ title('tetrahedron mesh');
 
 plot3(cor(1,:),cor(2,:),cor(3,:),'r*');
 
-[vol_sur_dist,vol_sur_pos] = getDistance(newno2,cor');
-[vol_sur_dense_dist,vol_sur_dense_pos] = getDistance(newno,cor');
+[vol_sur_dist,vol_sur_pos] = vtseg.getDistance(newno2,cor');
+[vol_sur_dense_dist,vol_sur_dense_pos] = vtseg.getDistance(newno,cor');
 
 newlabel = zeros(size(newno2,1),1);
 for i = 1:size(vol_sur_pos,2)

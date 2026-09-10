@@ -576,6 +576,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
                 set(contour_handles, 'Visible', 'on', 'LineWidth', contour_width);
             end
         end
+        set_active_edit_roi_visibility(figure_handle, contour_width > 0);
         update_display_control_text();
         drawnow;
     end
@@ -722,6 +723,8 @@ end
 title(ax, 'Drag contour vertices, then accept or cancel below');
 
 figure_handle = ancestor(ax, 'figure');
+setappdata(figure_handle, 'vtsegActiveEditRois', rois);
+set_active_edit_roi_visibility(figure_handle, contour_width > 0);
 setappdata(figure_handle, 'vtsegContourEditAction', '');
 accept_button = uicontrol(figure_handle, ...
     'Style', 'pushbutton', ...
@@ -741,6 +744,9 @@ if ~isvalid(figure_handle)
     return;
 end
 action = getappdata(figure_handle, 'vtsegContourEditAction');
+if isappdata(figure_handle, 'vtsegActiveEditRois')
+    rmappdata(figure_handle, 'vtsegActiveEditRois');
+end
 if isvalid(accept_button)
     delete(accept_button);
 end
@@ -769,6 +775,22 @@ if isvalid(figure_handle)
     setappdata(figure_handle, 'vtsegContourEditAction', action);
     uiresume(figure_handle);
 end
+end
+
+function set_active_edit_roi_visibility(figure_handle, is_visible)
+    if ~isvalid(figure_handle) || ~isappdata(figure_handle, 'vtsegActiveEditRois')
+        return;
+    end
+    rois = getappdata(figure_handle, 'vtsegActiveEditRois');
+    for index = 1:numel(rois)
+        if ~isempty(rois{index}) && isvalid(rois{index})
+            if is_visible
+                set(rois{index}, 'Visible', 'on');
+            else
+                set(rois{index}, 'Visible', 'off');
+            end
+        end
+    end
 end
 
 function mask = redraw_mask_components(ax, Im, color, gs_range)

@@ -822,7 +822,7 @@ end
 setappdata(figure_handle, 'vtsegReviewChoice', '');
 panel = uipanel(figure_handle, 'Units', 'normalized', ...
     'Position', [0.74 0.05 0.23 0.18], 'Title', prompt, ...
-    'BackgroundColor', 'w');
+    'BackgroundColor', 'w', 'FontWeight', 'bold', 'FontSize', 12);
 choice_count = size(choices, 1);
 for index = 1:choice_count
     row = floor((index - 1) / 2);
@@ -833,6 +833,7 @@ for index = 1:choice_count
     y = 0.58 - row * 0.36;
     uicontrol(panel, 'Style', 'pushbutton', 'Units', 'normalized', ...
         'Position', [x y width height], 'String', choices{index, 1}, ...
+        'FontWeight', 'bold', 'FontSize', 11, ...
         'Callback', @(~, ~) finish_review_action(figure_handle, choices{index, 2}));
 end
 

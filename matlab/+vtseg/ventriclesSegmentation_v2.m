@@ -977,8 +977,13 @@ function plot_mask_contour(ax, mask, color, line_width)
     end
     mask = logical(mask);
 
-    if line_width > 0 && any(mask(:)) && any(~mask(:))
-        contour(ax, mask, [0.5 0.5], color, 'LineWidth', line_width);
+    if any(mask(:)) && any(~mask(:))
+        if line_width <= 0
+            contour(ax, mask, [0.5 0.5], color, ...
+                'LineWidth', 1.5, 'Visible', 'off');
+        else
+            contour(ax, mask, [0.5 0.5], color, 'LineWidth', line_width);
+        end
     end
 end
 

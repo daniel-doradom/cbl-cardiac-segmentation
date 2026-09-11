@@ -623,42 +623,50 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
 
     current_mask = Lendo(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+    [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
         ax, display_image, current_mask, 'LV endocardium', 'r', gs_range);
     if did_update
         Lendo(:, :, k) = apply_mask_update( ...
             Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
+    end
+    if did_update || display_dirty
         show_current_correction_masks( ...
             ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
     current_mask = Rendo(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+    [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
         ax, display_image, current_mask, 'RV endocardium', 'c', gs_range);
     if did_update
         Rendo(:, :, k) = apply_mask_update( ...
             Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
+    end
+    if did_update || display_dirty
         show_current_correction_masks( ...
             ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
     current_mask = Epi(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+    [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
         ax, display_image, current_mask, 'Epicardium', 'g', gs_range);
     if did_update
         Epi(:, :, k) = apply_mask_update( ...
             Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
+    end
+    if did_update || display_dirty
         show_current_correction_masks( ...
             ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
     end
 
     if has_lepi
         current_mask = lepi(display_crop.rows, display_crop.columns, k);
-        [new_mask, did_update, replace_entire_slice] = correct_one_mask( ...
+        [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
             ax, display_image, current_mask, 'LV epicardium', 'b', gs_range);
         if did_update
             lepi(:, :, k) = apply_mask_update( ...
                 lepi(:, :, k), new_mask, display_crop, replace_entire_slice);
+        end
+        if did_update || display_dirty
             show_current_correction_masks( ...
                 ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
         end
@@ -681,10 +689,14 @@ function show_current_correction_masks( ...
     drawnow;
 end
 
-function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
+function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
         ax, Im, current_mask, structure_name, color, gs_range)
+%CORRECT_ONE_MASK Prompt for one structure. display_dirty is true when the
+% chosen action replaced what the axes shows, so the caller must redraw the
+% full slice even if the mask itself did not change (a cancelled edit).
     did_update = false;
     replace_entire_slice = false;
+    display_dirty = false;
     mask = logical(current_mask);
 
     figure_handle = ancestor(ax, 'figure');
@@ -708,6 +720,7 @@ function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
 
     if strcmp(action, 'edit')
         [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range);
+        display_dirty = true;
         return;
     end
 
@@ -715,6 +728,7 @@ function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
         mask = redraw_mask_components(ax, Im, color, gs_range);
         did_update = true;
         replace_entire_slice = true;
+        display_dirty = true;
         return;
     end
 end
@@ -769,6 +783,11 @@ if isvalid(cancel_button)
     delete(cancel_button);
 end
 if ~strcmp(action, 'accept')
+    for index = 1:numel(rois)
+        if ~isempty(rois{index}) && isvalid(rois{index})
+            delete(rois{index});
+        end
+    end
     return;
 end
 

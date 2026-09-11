@@ -2,10 +2,11 @@ classdef ReviewStyle
 %REVIEWSTYLE Shared look of the vtseg MATLAB review and result windows.
 %
 % Every figure the MATLAB pipeline opens goes through newFigure, so they all
-% share one dark surface, one type scale and one "Stage: detail" name with no
-% "Figure N:" prefix. Controls come from section, label, button, slider,
-% toggle and field, so a window built from them looks like the mask
-% correction window. The class holds no state; every method is static.
+% share one dark surface, one type scale and one title pattern,
+% "FigN: Stage: detail", where N is MATLAB's own figure number. Controls come
+% from section, label, button, slider, toggle and field, so a window built
+% from them looks like the mask correction window. The class holds no state;
+% every method is static.
 
     methods (Static)
 
@@ -27,7 +28,7 @@ classdef ReviewStyle
         end
 
         function handle = newFigure(name, varargin)
-        %NEWFIGURE A themed figure titled exactly `name`.
+        %NEWFIGURE A themed figure titled "FigN: name", N being its figure number.
         % Extra name-value pairs are passed to figure(). Axes, labels and
         % titles created in the figure inherit light colours through
         % figure-level defaults, so plain title() and xlabel() calls stay
@@ -35,6 +36,12 @@ classdef ReviewStyle
             theme = vtseg.ReviewStyle.theme();
             handle = figure('Name', name, 'NumberTitle', 'off', ...
                 'Color', theme.figure, varargin{:});
+            % MATLAB's own "Figure N:" prefix is replaced by a shorter "FigN:"
+            % so the number stays visible without crowding out the name.
+            number = get(handle, 'Number');
+            if ~isempty(number)
+                set(handle, 'Name', sprintf('Fig%d: %s', number, name));
+            end
             set(handle, ...
                 'DefaultAxesColor', theme.figure, ...
                 'DefaultAxesXColor', theme.muted, ...

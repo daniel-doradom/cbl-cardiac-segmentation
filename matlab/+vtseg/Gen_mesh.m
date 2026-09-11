@@ -76,14 +76,12 @@ vol_sur = isosurface(X,Y,Z,vol21, 0);
 vol2 = vol21;
 
 % combine all three surface into a volume
-gen_mesh_figure = figure('Name', 'Gen_mesh - mesh visualizations', ...
-    'NumberTitle', 'off');
+gen_mesh_figure = vtseg.ReviewStyle.newFigure('Mesh generation: surfaces');
 tiledlayout(1, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 nexttile;
 volobj = isosurface(X,Y,Z,vol2, 0);
 p7 = patch(volobj, 'FaceColor', 'g', 'EdgeColor', 'r');
-title('Combined surface');
-
+vtseg.ReviewStyle.axesTitle(gca, 'Combined surface');
 % labeling the surface mesh nodes to differentiate epi , lendo and rendo
 [epidist,eq] = vtseg.getDistance(vol_sur.vertices,epi_sur.vertices);
 [lendodist,eq] = vtseg.getDistance(vol_sur.vertices,lendo_sur.vertices);
@@ -144,8 +142,7 @@ temp = (newlabel(:)==1);
 figure(gen_mesh_figure);
 nexttile;
 plot3(volobj.vertices(temp,1),volobj.vertices(temp,2),volobj.vertices(temp,3),'g*')
-title('LV endocardial surface nodes');
-
+vtseg.ReviewStyle.axesTitle(gca, 'LV endocardial surface nodes');
 % write to output path
 file1 = strcat(path_out,'heart_sur');
 file1 = strcat(file1,'.tri');
@@ -217,7 +214,7 @@ lighting gouraud
 axis equal
 alpha(0.3)
 plot3(cor(1,:),cor(2,:),cor(3,:),'r*');
-title('Dense surface mesh nodes');
+vtseg.ReviewStyle.axesTitle(gca, 'Dense surface mesh nodes');
 view(3);
 axis vis3d;
 %daspect([1 1 .4])

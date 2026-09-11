@@ -187,7 +187,7 @@ function backup_path = backup_original_files( ...
 end
 
 function show_before_after_mesh(node, face, node_fixed, face_fixed, mesh_prefix)
-    fig = figure('Name', ['Mesh repair: ' mesh_prefix], 'NumberTitle', 'off');
+    fig = vtseg.ReviewStyle.newFigure(['Mesh repair: ' mesh_prefix]);
 
     ax1 = subplot(1, 2, 1);
     plot_surface(ax1, node, face, 'Original');
@@ -210,7 +210,7 @@ function plot_surface(ax, node, face, plot_title)
         'EdgeAlpha', 0.08, ...
         'FaceAlpha', 0.95);
 
-    title(ax, sprintf('%s\n%d nodes, %d faces', ...
+    vtseg.ReviewStyle.axesTitle(ax, sprintf('%s\n%d nodes, %d faces', ...
         plot_title, size(node, 1), size(face, 1)));
     axis(ax, 'equal');
     grid(ax, 'on');

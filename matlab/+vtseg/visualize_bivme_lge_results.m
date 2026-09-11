@@ -64,7 +64,7 @@ end
 
 function show_mesh_panels(sur_nodes, sur_elems, sur_dense_nodes, sur_dense_elems, ...
         tet_nodes, tet_elems, tet_dense_nodes, tet_dense_elems)
-figure('Name', 'biv-me LGE generated meshes', 'NumberTitle', 'off', 'Color', 'w');
+vtseg.ReviewStyle.newFigure('Generated meshes: surface and tetrahedral');
 tiledlayout(1, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 nexttile; plotmesh(sur_nodes, sur_elems); format_mesh_axes(gca, 'Surface mesh');
@@ -87,7 +87,7 @@ tet_values = vtseg.DicomUtils.read_Geometry_heart(files{2}, 1, 'double');
 dense_nodes = vtseg.DicomUtils.read_Geometry_heart(files{3}, 3, 'double');
 dense_values = vtseg.DicomUtils.read_Geometry_heart(files{4}, 1, 'double');
 
-figure('Name', 'biv-me LGE mesh node values', 'NumberTitle', 'off', 'Color', 'w');
+vtseg.ReviewStyle.newFigure('Generated meshes: node values');
 tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
 nexttile;
 scatter3(tet_nodes(:, 1), tet_nodes(:, 2), tet_nodes(:, 3), 10, tet_values, 'filled');
@@ -101,12 +101,12 @@ function format_mesh_axes(ax, plot_title)
 axis(ax, 'equal');
 view(ax, 75, 30);
 xlabel(ax, 'X'); ylabel(ax, 'Y'); zlabel(ax, 'Z');
-title(ax, plot_title);
+vtseg.ReviewStyle.axesTitle(ax, plot_title);
 lighting(ax, 'gouraud'); camlight(ax, 'headlight'); material(ax, 'dull');
 end
 
 function format_value_axes(ax, plot_title)
 axis(ax, 'equal'); view(ax, 3);
 xlabel(ax, 'X'); ylabel(ax, 'Y'); zlabel(ax, 'Z');
-title(ax, plot_title); colorbar(ax); colormap(ax, gray(256));
+vtseg.ReviewStyle.axesTitle(ax, plot_title); vtseg.ReviewStyle.colorbarFor(ax); colormap(ax, gray(256));
 end

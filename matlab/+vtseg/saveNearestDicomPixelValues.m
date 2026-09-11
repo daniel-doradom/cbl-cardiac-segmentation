@@ -23,20 +23,20 @@ function saveNearestDicomPixelValues(global_path, SA_full_stack_path)
     fprintf('DENSE SURFACE valid vertices: %.2f%%\n', 100 * nnz(~isnan(pixel_values_sur_dense)) / numel(pixel_values_sur_dense));
 
 
-    figure();
+    vtseg.ReviewStyle.newFigure('Node values: nearest DICOM pixels');
 
 
     subplot(1,2,1);
     scatter3(tet_nodes(:,1), tet_nodes(:,2), tet_nodes(:,3), 10, pixel_values, 'filled');
-    title('Coarse Mesh'); view(3); axis equal; xlabel('X'); ylabel('Y'); zlabel('Z'); colorbar; colormap("gray");
+    vtseg.ReviewStyle.axesTitle(gca, 'Coarse Mesh'); view(3); axis equal; xlabel('X'); ylabel('Y'); zlabel('Z'); vtseg.ReviewStyle.colorbarFor(gca); colormap("gray");
 
 
     subplot(1,2,2);
     scatter3(tet_nodes_dense(:,1), tet_nodes_dense(:,2), tet_nodes_dense(:,3), 10, pixel_values_dense, 'filled');
-    title('Dense Mesh'); view(3); axis equal; xlabel('X'); ylabel('Y'); zlabel('Z'); colorbar; colormap("gray");
+    vtseg.ReviewStyle.axesTitle(gca, 'Dense Mesh'); view(3); axis equal; xlabel('X'); ylabel('Y'); zlabel('Z'); vtseg.ReviewStyle.colorbarFor(gca); colormap("gray");
 
 
-    sgtitle('Nearest DICOM Pixel Values');
+    vtseg.ReviewStyle.figureTitle(gcf, 'Nearest DICOM Pixel Values');
 
 
     fid = fopen(fullfile(global_path, 'tet_node_values.val'), 'wb');

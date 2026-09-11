@@ -111,8 +111,7 @@ function [scar_mask, initial_region, fwhm_thresholds] = save_scar_mask_fwhm(seg_
     Imax_values = nan(1, n_slices);
     Imin_values = nan(1, n_slices);
 
-    figure_handle = figure('Name', 'FWHM scar segmentation', ...
-        'NumberTitle', 'off');
+    figure_handle = vtseg.ReviewStyle.newFigure('Scar segmentation: FWHM threshold');
 
     for n_slice = scar_slices
         if ~isvalid(figure_handle)
@@ -133,7 +132,7 @@ function [scar_mask, initial_region, fwhm_thresholds] = save_scar_mask_fwhm(seg_
         imshow(img_slice, gs_range, 'Parent', ax); colormap(gca, gray); axis image;
         hold(ax, 'on');
         contour(ax, myo_mask, [0.5 0.5], 'g', 'LineWidth', 1);
-        title(ax, sprintf('Slice %d: myocardium outline', n_slice));
+        vtseg.ReviewStyle.axesTitle(ax, sprintf('Slice %d: myocardium outline', n_slice));
 
         prompt = sprintf('Select scar seed point on slice %d? (y/n/quit) >> ', n_slice);
         str = input(prompt, 's');
@@ -209,7 +208,7 @@ function [scar_mask, initial_region, fwhm_thresholds] = save_scar_mask_fwhm(seg_
         plot(ax, seed_col, seed_row, 'y+', 'LineWidth', 1.5, 'MarkerSize', 10);
         contour(ax, initial_slice, [0.5 0.5], 'y', 'LineWidth', 1);
         contour(ax, scar_slice, [0.5 0.5], 'r', 'LineWidth', 1.5);
-        title(ax, sprintf('Slice %d: Imin = %.3f, Imax = %.3f, threshold = %.3f', ...
+        vtseg.ReviewStyle.axesTitle(ax, sprintf('Slice %d: Imin = %.3f, Imax = %.3f, threshold = %.3f', ...
             n_slice, Imin, Imax, fwhm_threshold));
         drawnow;
         pause(1);
@@ -276,8 +275,7 @@ function review_scar_mask_fwhm( ...
         fwhm_thresholds, scar_slices, gs_range, seed_points, ...
         Imax_values, Imin_values)
 
-    figure_handle = figure('Name', 'Review FWHM scar mask', ...
-        'NumberTitle', 'off');
+    figure_handle = vtseg.ReviewStyle.newFigure('Scar segmentation: review');
 
     for n_slice = scar_slices
         if ~isvalid(figure_handle)
@@ -318,9 +316,9 @@ function review_scar_mask_fwhm( ...
         end
 
         if isnan(fwhm_thresholds(n_slice))
-            title(ax, sprintf('Slice %d: no scar seed', n_slice));
+            vtseg.ReviewStyle.axesTitle(ax, sprintf('Slice %d: no scar seed', n_slice));
         else
-            title(ax, sprintf('Slice %d: Imin = %.3f, Imax = %.3f, threshold = %.3f', ...
+            vtseg.ReviewStyle.axesTitle(ax, sprintf('Slice %d: Imin = %.3f, Imax = %.3f, threshold = %.3f', ...
                 n_slice, Imin_values(n_slice), Imax_values(n_slice), ...
                 fwhm_thresholds(n_slice)));
         end

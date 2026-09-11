@@ -237,9 +237,9 @@ classdef DicomUtils
 
             ref_slice = max(1, min(n_myo_slices, round(ref_slice)));
 
-            figure('Name', 'Define myocardium crop');
+            vtseg.ReviewStyle.newFigure('DICOM selection: define myocardium crop');
             imshow(myocardium(:, :, ref_slice));
-            title(sprintf(['Draw crop box on Slice %d, ' ...
+            vtseg.ReviewStyle.axesTitle(gca, sprintf(['Draw crop box on Slice %d, ' ...
                 'then double-click inside it'], ref_slice));
 
             h = drawrectangle('Color', 'r');
@@ -259,7 +259,7 @@ classdef DicomUtils
             n_cols = ceil(sqrt(n_myo_slices));
             n_rows = ceil(n_myo_slices / n_cols);
 
-            figure('Name', 'Cropped myocardium masks');
+            vtseg.ReviewStyle.newFigure('DICOM selection: cropped myocardium masks');
             tiledlayout(n_rows, n_cols, ...
                 'TileSpacing', 'compact', ...
                 'Padding', 'compact');
@@ -268,10 +268,10 @@ classdef DicomUtils
                 nexttile;
                 cropped_mask = myocardium(y1:y2, x1:x2, k);
                 imshow(cropped_mask);
-                title(sprintf('Slice %d', k));
+                vtseg.ReviewStyle.axesTitle(gca, sprintf('Slice %d', k));
             end
 
-            sgtitle('Cropped Myocardium Masks');
+            vtseg.ReviewStyle.figureTitle(gcf, 'Cropped Myocardium Masks');
         end
 
 
@@ -296,9 +296,7 @@ classdef DicomUtils
                     'display_time must be a nonnegative scalar.');
             end
 
-            figureHandle = figure( ...
-                'Name', 'Selected DICOM slices', ...
-                'NumberTitle', 'off');
+            figureHandle = vtseg.ReviewStyle.newFigure('DICOM selection: selected slices');
 
             axesHandle = axes('Parent', figureHandle);
 
@@ -328,14 +326,13 @@ classdef DicomUtils
 
                 imshow(imageData, gs_range, 'Parent', axesHandle);
 
-                title(axesHandle, sprintf( ...
+                vtseg.ReviewStyle.axesTitle(axesHandle, sprintf( ...
                     ['Selected slice %d of %d | Instance %g | ' ...
                      'SliceLocation %.6f'], ...
                     i, ...
                     numel(selected_dicoms), ...
                     selected_dicoms(i).instanceNumber, ...
-                    selected_dicoms(i).sliceLocation), ...
-                    'Interpreter', 'none');
+                    selected_dicoms(i).sliceLocation));
 
                 drawnow;
                 pause(display_time);
@@ -682,11 +679,11 @@ classdef DicomUtils
         % ======================== Plotting Functions =========================
 
         function plot_heart_and_slices(tet_nodes, tet_elems, dicoms, dicom_images, slice_alpha)
-            figure('Name', 'Global mesh and selected DICOM slices', 'Color', 'w'); hold on;
+            vtseg.ReviewStyle.newFigure('Mesh alignment: global mesh and slices'); hold on;
 
 
             % plot mesh
-            plotmesh(tet_nodes, tet_elems); title('Heart Surface Mesh');
+            plotmesh(tet_nodes, tet_elems); vtseg.ReviewStyle.axesTitle(gca, 'Heart Surface Mesh');
 
 
 
@@ -699,7 +696,7 @@ classdef DicomUtils
             end
 
 
-            title(sprintf('Heart mesh over %d selected DICOM slices', numel(dicoms)));
+            vtseg.ReviewStyle.axesTitle(gca, sprintf('Heart mesh over %d selected DICOM slices', numel(dicoms)));
             xlabel('Patient X (mm)'); ylabel('Patient Y (mm)'); zlabel('Patient Z (mm)');
             axis equal tight; axis vis3d; view(3); grid on;lighting gouraud; camlight headlight; material dull; rotate3d on;
         end
@@ -710,7 +707,7 @@ classdef DicomUtils
 
 
         function animate_slice_mesh_alignment(tet_nodes, dicoms, dicom_images, near_plane_tolerance_mm, animation_pause_seconds)
-            figure('Name', 'Per-slice mesh alignment', 'Color', 'w');
+            vtseg.ReviewStyle.newFigure('Mesh alignment: per-slice');
             for k = 1:numel(dicoms)
                 clf;
 
@@ -733,7 +730,7 @@ classdef DicomUtils
                 camup([0 0 1]); camproj orthographic;
 
 
-                title(sprintf('Slice %d/%d: %d mesh nodes within %.1f mm', k, numel(dicoms), nnz(near_plane), near_plane_tolerance_mm));
+                vtseg.ReviewStyle.axesTitle(gca, sprintf('Slice %d/%d: %d mesh nodes within %.1f mm', k, numel(dicoms), nnz(near_plane), near_plane_tolerance_mm));
                 xlabel('Patient X (mm)'); ylabel('Patient Y (mm)'); zlabel('Patient Z (mm)');
                 colormap gray; axis vis3d; grid on; rotate3d on;
 

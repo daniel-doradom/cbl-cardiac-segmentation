@@ -29,39 +29,35 @@ face1 = tri';
 node1=node1(:,1:3);
 face1=face1(:,1:3);
 
-mesh_comparison_figure = figure('Name', ...
-    'iso2meshEP - input and smoothing', 'NumberTitle', 'off');
+mesh_comparison_figure = vtseg.ReviewStyle.newFigure('Mesh smoothing: input and smoothed');
 tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
 nexttile;
 plotmesh(node1,face1);
 axis equal
-title('from Gen_mesh');
+vtseg.ReviewStyle.axesTitle(gca, 'from Gen_mesh');
 % smoothing
 newno1=sms(node1,face1(:,1:3),3,0.5); %%smooth
 figure(mesh_comparison_figure);
 nexttile;
 plotmesh(newno1,face1);
 axis equal
-title('after smoothing');
-
+vtseg.ReviewStyle.axesTitle(gca, 'after smoothing');
 % remeshing to make free of self interesting element, can doth downsample
 % and upsample the mesh
 
 [newno,newfc]=remeshsurf(newno1,face1,4);
-remesh_comparison_figure = figure('Name', ...
-    'iso2meshEP - remesh and smoothing', 'NumberTitle', 'off');
+remesh_comparison_figure = vtseg.ReviewStyle.newFigure('Mesh smoothing: remeshed and smoothed');
 tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
 nexttile;
 plotmesh(newno,newfc);
 axis equal
-title('after remesh');
-
+vtseg.ReviewStyle.axesTitle(gca, 'after remesh');
 %again smoothing
 newno=sms(newno,newfc(:,1:3),3,0.5);
 figure(remesh_comparison_figure);
 nexttile;
 plotmesh(newno,newfc(:,1:3));
-title('smoothing after remesh');
+vtseg.ReviewStyle.axesTitle(gca, 'smoothing after remesh');
 axis equal
 
 % remeshing, similar to remeshsurf, uses downsample
@@ -83,15 +79,13 @@ fprintf('  max = [%g %g %g]\n', mesh_max);
 
 [node,elem,face]=surf2mesh(newno,newfc,mesh_min,mesh_max,0.5,80);
 [node_dense,elem_dense]=surf2mesh(newno,newfc,mesh_min,mesh_max,1.0,20);
-tet_comparison_figure = figure('Name', ...
-    'iso2meshEP - tetrahedron mesh and nodes', 'NumberTitle', 'off');
+tet_comparison_figure = vtseg.ReviewStyle.newFigure('Tetrahedral mesh: elements and nodes');
 tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
 nexttile;
 plotmesh(node,face(:,1:3));
 axis equal
 hold on
-title('tetrahedron mesh');
-
+vtseg.ReviewStyle.axesTitle(gca, 'tetrahedron mesh');
 plot3(cor(1,:),cor(2,:),cor(3,:),'r*');
 
 [vol_sur_dist,vol_sur_pos] = vtseg.getDistance(newno2,cor');
@@ -124,8 +118,7 @@ end
 figure(tet_comparison_figure);
 nexttile;
 plot3(node(:,1),node(:,2),node(:,3),'b+')
-title('nodes')
-
+vtseg.ReviewStyle.axesTitle(gca, 'nodes');
 %% output the mesh information
 % .tri files are the faces, .cor files are the coordinates, .tet files are
 % the element for tetrahedron mesh
@@ -246,7 +239,7 @@ if readLVepi == 1
     [lvnode,lvelem,lvface]=surf2mesh(lvnewno,lvnewfc,[1 1 1],[100 100 100],0.4,250);
 
 
-    figure('Name', 'iso2meshEP - LV tetrahedron mesh', 'NumberTitle', 'off')
+    vtseg.ReviewStyle.newFigure('Tetrahedral mesh: LV');
     plotmesh(lvnode,lvface(:,1:3));
     axis equal
 

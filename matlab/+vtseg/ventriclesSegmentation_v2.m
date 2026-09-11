@@ -337,11 +337,11 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
 
     save_confirmed = false;
 
-    theme = review_theme();
+    theme = vtseg.ReviewStyle.theme();
     layout = review_layout();
-    figure_handle = figure('Name', 'Review/correct masks', ...
-        'NumberTitle', 'off', 'Color', theme.figure, 'Units', 'normalized', ...
-        'Position', [0.06 0.08 0.88 0.84], 'CloseRequestFcn', @quit_review);
+    figure_handle = vtseg.ReviewStyle.newFigure('Mask correction: review slices', ...
+        'Units', 'normalized', 'Position', [0.06 0.08 0.88 0.84], ...
+        'CloseRequestFcn', @quit_review);
     ax = axes('Parent', figure_handle, 'Units', 'normalized', ...
         'Position', layout.axes, 'Color', theme.figure, ...
         'XColor', theme.muted, 'YColor', theme.muted);
@@ -354,32 +354,23 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     minimum_width = max(window_span / 1000, eps(window_span));
 
     % Side panel, top: display settings, each with its live value beside the label.
-    display_panel = review_section(figure_handle, layout.display, 'Display');
-    review_label(display_panel, [0.05 0.86 0.55 0.09], 'Window center', 'left', false);
-    center_value = review_label(display_panel, [0.60 0.86 0.35 0.09], '', 'right', true);
-    center_slider = uicontrol(display_panel, 'Style', 'slider', 'Units', 'normalized', ...
-        'Position', [0.05 0.76 0.90 0.09], 'Min', window_limits(1), ...
-        'Max', window_limits(2), 'Value', window_center, ...
-        'SliderStep', [0.01 0.10], 'BackgroundColor', theme.field, ...
-        'Callback', @on_display_control_change);
-    review_label(display_panel, [0.05 0.62 0.55 0.09], 'Window width', 'left', false);
-    width_value = review_label(display_panel, [0.60 0.62 0.35 0.09], '', 'right', true);
-    width_slider = uicontrol(display_panel, 'Style', 'slider', 'Units', 'normalized', ...
-        'Position', [0.05 0.52 0.90 0.09], 'Min', minimum_width, ...
-        'Max', window_span, 'Value', max(minimum_width, min(window_span, window_width)), ...
-        'SliderStep', [0.01 0.10], 'BackgroundColor', theme.field, ...
-        'Callback', @on_display_control_change);
-    review_label(display_panel, [0.05 0.38 0.55 0.09], 'Contour width', 'left', false);
-    contour_value = review_label(display_panel, [0.60 0.38 0.35 0.09], '', 'right', true);
-    contour_width_slider = uicontrol(display_panel, 'Style', 'slider', 'Units', 'normalized', ...
-        'Position', [0.05 0.28 0.90 0.09], 'Min', 0.1, 'Max', 4, 'Value', 1.5, ...
-        'SliderStep', [0.05 / 3.9 0.5 / 3.9], 'BackgroundColor', theme.field, ...
-        'Callback', @on_display_control_change);
-    contour_toggle = uicontrol(display_panel, 'Style', 'togglebutton', 'Units', 'normalized', ...
-        'Position', [0.05 0.06 0.90 0.14], 'String', 'Show contours', 'Value', 1, ...
-        'BackgroundColor', theme.neutral, 'ForegroundColor', theme.text, ...
-        'FontSize', theme.font_size, 'FontWeight', 'bold', ...
-        'Callback', @on_display_control_change);
+    display_panel = vtseg.ReviewStyle.section(figure_handle, layout.display, 'Display');
+    vtseg.ReviewStyle.label(display_panel, [0.05 0.86 0.55 0.09], 'Window center', 'left', false);
+    center_value = vtseg.ReviewStyle.label(display_panel, [0.60 0.86 0.35 0.09], '', 'right', true);
+    center_slider = vtseg.ReviewStyle.slider(display_panel, [0.05 0.76 0.90 0.09], ...
+        window_limits(1), window_limits(2), window_center, [0.01 0.10], ...
+        @on_display_control_change);
+    vtseg.ReviewStyle.label(display_panel, [0.05 0.62 0.55 0.09], 'Window width', 'left', false);
+    width_value = vtseg.ReviewStyle.label(display_panel, [0.60 0.62 0.35 0.09], '', 'right', true);
+    width_slider = vtseg.ReviewStyle.slider(display_panel, [0.05 0.52 0.90 0.09], ...
+        minimum_width, window_span, max(minimum_width, min(window_span, window_width)), ...
+        [0.01 0.10], @on_display_control_change);
+    vtseg.ReviewStyle.label(display_panel, [0.05 0.38 0.55 0.09], 'Contour width', 'left', false);
+    contour_value = vtseg.ReviewStyle.label(display_panel, [0.60 0.38 0.35 0.09], '', 'right', true);
+    contour_width_slider = vtseg.ReviewStyle.slider(display_panel, [0.05 0.28 0.90 0.09], ...
+        0.1, 4, 1.5, [0.05 / 3.9 0.5 / 3.9], @on_display_control_change);
+    contour_toggle = vtseg.ReviewStyle.toggle(display_panel, [0.05 0.06 0.90 0.14], ...
+        'Show contours', 1, @on_display_control_change);
     setappdata(figure_handle, 'vtsegReviewDisplayControls', struct( ...
         'center_slider', center_slider, 'width_slider', width_slider, ...
         'contour_width_slider', contour_width_slider, 'contour_toggle', contour_toggle, ...
@@ -388,30 +379,28 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     update_display_control_text();
 
     % Side panel, middle: which colour is which structure.
-    legend_panel = review_section(figure_handle, layout.legend, 'Contours');
+    legend_panel = vtseg.ReviewStyle.section(figure_handle, layout.legend, 'Contours');
     review_legend(legend_panel, has_lepi);
 
     % Side panel, bottom: left empty. Action prompts and the contour-edit
     % buttons appear there, so the window never rearranges while working.
 
     % Header: navigation on the left, slice jump in the middle, session actions on the right.
-    header = review_section(figure_handle, layout.header, '');
-    previous_button = review_button(header, [0.010 0.15 0.095 0.70], 'Previous', ...
+    header = vtseg.ReviewStyle.section(figure_handle, layout.header, '');
+    previous_button = vtseg.ReviewStyle.button(header, [0.010 0.15 0.095 0.70], 'Previous', ...
         @(~, ~) choose_navigation('previous'), 'neutral');
-    next_button = review_button(header, [0.112 0.15 0.115 0.70], 'Keep / Next', ...
+    next_button = vtseg.ReviewStyle.button(header, [0.112 0.15 0.115 0.70], 'Keep / Next', ...
         @(~, ~) choose_navigation('next'), 'primary');
-    correct_button = review_button(header, [0.234 0.15 0.095 0.70], 'Modify', ...
+    correct_button = vtseg.ReviewStyle.button(header, [0.234 0.15 0.095 0.70], 'Modify', ...
         @(~, ~) choose_navigation('modify'), 'neutral');
-    review_label(header, [0.400 0.15 0.085 0.70], 'Go to slice', 'right', true);
-    slice_field = uicontrol(header, 'Style', 'edit', 'Units', 'normalized', ...
-        'Position', [0.492 0.18 0.050 0.64], 'String', '1', ...
-        'BackgroundColor', theme.field, 'ForegroundColor', theme.text, ...
-        'FontSize', theme.font_size, 'Callback', @(~, ~) choose_navigation('jump'));
-    jump_button = review_button(header, [0.548 0.15 0.050 0.70], 'Go', ...
+    vtseg.ReviewStyle.label(header, [0.400 0.15 0.085 0.70], 'Go to slice', 'right', true);
+    slice_field = vtseg.ReviewStyle.field(header, [0.492 0.18 0.050 0.64], '1', ...
+        @(~, ~) choose_navigation('jump'));
+    jump_button = vtseg.ReviewStyle.button(header, [0.548 0.15 0.050 0.70], 'Go', ...
         @(~, ~) choose_navigation('jump'), 'neutral');
-    finish_button = review_button(header, [0.745 0.15 0.115 0.70], 'Finish review', ...
+    finish_button = vtseg.ReviewStyle.button(header, [0.745 0.15 0.115 0.70], 'Finish review', ...
         @(~, ~) choose_navigation('finish'), 'neutral');
-    quit_button = review_button(header, [0.868 0.15 0.122 0.70], 'Quit without saving', ...
+    quit_button = vtseg.ReviewStyle.button(header, [0.868 0.15 0.122 0.70], 'Quit without saving', ...
         @(~, ~) choose_navigation('quit'), 'danger');
     navigation_controls = [previous_button, next_button, correct_button, ...
         slice_field, jump_button, finish_button, quit_button];
@@ -685,7 +674,7 @@ function show_current_correction_masks( ...
     if has_lepi
         plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b', contour_width);
     end
-    set_review_title(ax, sprintf('Slice %d correction preview', k));
+    vtseg.ReviewStyle.axesTitle(ax, sprintf('Slice %d correction preview', k));
     drawnow;
 end
 
@@ -756,16 +745,16 @@ for index = 1:numel(contours)
         'LineWidth', contour_width, ...
         'FaceAlpha', 0.10);
 end
-set_review_title(ax, 'Drag contour vertices, then accept or cancel in the side panel');
+vtseg.ReviewStyle.axesTitle(ax, 'Drag contour vertices, then accept or cancel in the side panel');
 
 figure_handle = ancestor(ax, 'figure');
 setappdata(figure_handle, 'vtsegActiveEditRois', rois);
 set_active_edit_roi_visibility(figure_handle, contour_width > 0);
 setappdata(figure_handle, 'vtsegContourEditAction', '');
 [accept_position, cancel_position] = review_edit_button_positions();
-accept_button = review_button(figure_handle, accept_position, 'Accept contour edits', ...
+accept_button = vtseg.ReviewStyle.button(figure_handle, accept_position, 'Accept contour edits', ...
     @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary');
-cancel_button = review_button(figure_handle, cancel_position, 'Cancel', ...
+cancel_button = vtseg.ReviewStyle.button(figure_handle, cancel_position, 'Cancel', ...
     @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral');
 uiwait(figure_handle);
 
@@ -849,7 +838,7 @@ function action = choose_review_action(figure_handle, prompt, choices, title_col
 %CHOOSE_REVIEW_ACTION Present one modal action panel inside the review figure.
 % title_color (optional) colours the prompt; structure prompts pass the
 % structure's contour colour so it is obvious which outline is being decided.
-theme = review_theme();
+theme = vtseg.ReviewStyle.theme();
 if nargin < 4 || isempty(title_color)
     title_color = theme.text;
 end
@@ -860,7 +849,7 @@ end
 
 setappdata(figure_handle, 'vtsegReviewChoice', '');
 layout = review_layout();
-panel = review_section(figure_handle, layout.action_slot, prompt);
+panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, prompt);
 set(panel, 'FontSize', theme.font_size + 2, 'ForegroundColor', title_color);
 choice_count = size(choices, 1);
 margin = 0.06;
@@ -868,7 +857,7 @@ gap = 0.05;
 height = min(0.30, (1 - 2 * margin - gap * (choice_count - 1)) / choice_count);
 for index = 1:choice_count
     y = 1 - margin - index * height - (index - 1) * gap;
-    review_button(panel, [margin, y, 1 - 2 * margin, height], choices{index, 1}, ...
+    vtseg.ReviewStyle.button(panel, [margin, y, 1 - 2 * margin, height], choices{index, 1}, ...
         @(~, ~) finish_review_action(figure_handle, choices{index, 2}), ...
         review_action_kind(choices{index, 2}));
 end
@@ -938,7 +927,7 @@ function [display_image, h_img] = show_slice_with_masks( ...
         plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns, k), 'b', contour_width);
     end
 
-    set_review_title(ax, sprintf('Slice %d: %s', k, file_name));
+    vtseg.ReviewStyle.axesTitle(ax, sprintf('Slice %d: %s', k, file_name));
     drawnow;
 end
 
@@ -951,13 +940,10 @@ function show_before_after_comparison( ...
 [display_gs_range, contour_width] = ...
     current_review_display_settings(review_ax, fallback_gs_range);
 
-theme = review_theme();
-comparison_figure = figure( ...
-    'Name', sprintf('Compare edits: Slice %d', k), ...
-    'NumberTitle', 'off', ...
-    'Color', theme.figure, ...
-    'WindowStyle', 'modal', ...
-    'Position', [160 180 1150 560]);
+theme = vtseg.ReviewStyle.theme();
+comparison_figure = vtseg.ReviewStyle.newFigure( ...
+    sprintf('Mask correction: compare edits, slice %d', k), ...
+    'WindowStyle', 'modal', 'Position', [160 180 1150 560]);
 
 before_ax = subplot(1, 2, 1, 'Parent', comparison_figure);
 after_ax = subplot(1, 2, 2, 'Parent', comparison_figure);
@@ -973,7 +959,7 @@ annotation(comparison_figure, 'textbox', [0.08 0.93 0.84 0.05], ...
     'Interpreter', 'none', 'HorizontalAlignment', 'center', ...
     'FontWeight', 'bold', 'FontSize', 12, 'EdgeColor', 'none', ...
     'Color', theme.text);
-review_button(comparison_figure, [0.42 0.02 0.16 0.065], 'Return to decision', ...
+vtseg.ReviewStyle.button(comparison_figure, [0.42 0.02 0.16 0.065], 'Return to decision', ...
     @(~, ~) delete(comparison_figure), 'primary');
 
 uiwait(comparison_figure);
@@ -990,7 +976,7 @@ plot_mask_contour(ax, Epi(display_crop.rows, display_crop.columns), 'g', contour
 if has_lepi
     plot_mask_contour(ax, lepi(display_crop.rows, display_crop.columns), 'b', contour_width);
 end
-theme = review_theme();
+theme = vtseg.ReviewStyle.theme();
 title(ax, panel_title, 'FontWeight', 'bold', 'FontSize', 11, 'Color', theme.text);
 end
 
@@ -1085,7 +1071,7 @@ function plot_final_segmentation_overview( ...
     n_cols = ceil(sqrt(n_slices));
     n_rows = ceil(n_slices / n_cols);
 
-    figure('Name', 'Final segmentation');
+    vtseg.ReviewStyle.newFigure('Mask correction: final contours');
     tiledlayout(n_rows, n_cols, ...
         'TileSpacing', 'compact', ...
         'Padding', 'compact');
@@ -1101,12 +1087,12 @@ function plot_final_segmentation_overview( ...
         plot_mask_contour(gca, Lendo(display_crop.rows, display_crop.columns, k), 'r');
         plot_mask_contour(gca, Rendo(display_crop.rows, display_crop.columns, k), 'c');
 
-        title(slice_labels{k}, 'Interpreter', 'none', 'FontSize', 8);
+        vtseg.ReviewStyle.axesTitle(gca, slice_labels{k}, 'FontSize', 8);
     end
 
-    sgtitle('Final segmentation contours: Epi green, Lendo red, Rendo cyan');
+    vtseg.ReviewStyle.figureTitle(gcf, 'Final segmentation contours: Epi green, Lendo red, Rendo cyan');
 
-    figure('Name', 'Final segmentation - raw images');
+    vtseg.ReviewStyle.newFigure('Mask correction: final raw images');
     tiledlayout(n_rows, n_cols, ...
         'TileSpacing', 'compact', ...
         'Padding', 'compact');
@@ -1116,10 +1102,10 @@ function plot_final_segmentation_overview( ...
 
         nexttile;
         imshow(Im(display_crop.rows, display_crop.columns), gs_range);
-        title(slice_labels{k}, 'Interpreter', 'none', 'FontSize', 8);
+        vtseg.ReviewStyle.axesTitle(gca, slice_labels{k}, 'FontSize', 8);
     end
 
-    sgtitle('Final segmentation crop: raw images');
+    vtseg.ReviewStyle.figureTitle(gcf, 'Final segmentation crop: raw images');
 end
 
 function labels = load_export_slice_labels(seg_path, folder, n_slices)
@@ -1153,23 +1139,6 @@ for k = 1:n_slices
 end
 end
 
-function theme = review_theme()
-%REVIEW_THEME Colours and type shared by the review window and its dialogs.
-% A dark surface keeps the grayscale image and its coloured contours as the
-% brightest things on screen, which is what a reviewer is looking at.
-theme = struct( ...
-    'figure', [0.11 0.13 0.16], ...   % window background
-    'panel', [0.16 0.19 0.23], ...    % side panels and header
-    'border', [0.30 0.34 0.40], ...   % 1 px panel outline
-    'field', [0.21 0.24 0.29], ...    % sliders and the slice field
-    'text', [0.93 0.94 0.96], ...
-    'muted', [0.66 0.70 0.76], ...
-    'primary', [0.15 0.45 0.90], ...  % the one action to take next
-    'neutral', [0.26 0.30 0.36], ...  % every other action
-    'danger', [0.72 0.22 0.22], ...   % actions that throw work away
-    'font_size', 10);
-end
-
 function layout = review_layout()
 %REVIEW_LAYOUT Figure-normalized regions of the review window.
 % The image gets the left 70 %; the right column holds Display, Contours and
@@ -1180,50 +1149,6 @@ layout = struct( ...
     'display', [0.735 0.530 0.250 0.370], ...
     'legend', [0.735 0.320 0.250 0.190], ...
     'action_slot', [0.735 0.030 0.250 0.270]);
-end
-
-function panel = review_section(parent, position, label)
-%REVIEW_SECTION One outlined panel; an empty label gives an untitled bar.
-theme = review_theme();
-panel = uipanel(parent, 'Units', 'normalized', 'Position', position, ...
-    'Title', label, 'TitlePosition', 'lefttop', ...
-    'BackgroundColor', theme.panel, 'ForegroundColor', theme.muted, ...
-    'BorderType', 'line', 'BorderWidth', 1, ...
-    'HighlightColor', theme.border, 'ShadowColor', theme.border, ...
-    'FontSize', theme.font_size - 1, 'FontWeight', 'bold');
-end
-
-function handle = review_label(parent, position, label, alignment, muted)
-%REVIEW_LABEL Static text on a panel; muted text is for values and hints.
-theme = review_theme();
-color = theme.text;
-if muted
-    color = theme.muted;
-end
-handle = uicontrol(parent, 'Style', 'text', 'Units', 'normalized', ...
-    'Position', position, 'String', label, 'HorizontalAlignment', alignment, ...
-    'BackgroundColor', theme.panel, 'ForegroundColor', color, ...
-    'FontSize', theme.font_size);
-end
-
-function handle = review_button(parent, position, label, callback, kind)
-%REVIEW_BUTTON A push button styled as 'primary', 'neutral' or 'danger'.
-theme = review_theme();
-switch kind
-    case 'primary'
-        background = theme.primary;
-        foreground = [1 1 1];
-    case 'danger'
-        background = theme.danger;
-        foreground = [1 1 1];
-    otherwise
-        background = theme.neutral;
-        foreground = theme.text;
-end
-handle = uicontrol(parent, 'Style', 'pushbutton', 'Units', 'normalized', ...
-    'Position', position, 'String', label, 'Callback', callback, ...
-    'BackgroundColor', background, 'ForegroundColor', foreground, ...
-    'FontSize', theme.font_size, 'FontWeight', 'bold');
 end
 
 function kind = review_action_kind(action)
@@ -1266,7 +1191,7 @@ for index = 1:size(entries, 1)
     swatch = uicontrol(panel, 'Style', 'text', 'Units', 'normalized', ...
         'Position', [0.07, y + 0.02, 0.10, row_height - 0.04], 'String', '', ...
         'BackgroundColor', entries{index, 2});
-    label = review_label(panel, [0.22 y 0.74 row_height], entries{index, 1}, 'left', false);
+    label = vtseg.ReviewStyle.label(panel, [0.22 y 0.74 row_height], entries{index, 1}, 'left', false);
     records(end + 1) = struct('name', entries{index, 1}, 'color', entries{index, 2}, ...
         'swatch', swatch, 'label', label); %#ok<AGROW>
 end
@@ -1296,7 +1221,7 @@ switch color
     case 'b'
         rgb = [0.45 0.65 1.00];
     otherwise
-        theme = review_theme();
+        theme = vtseg.ReviewStyle.theme();
         rgb = theme.text;
 end
 end
@@ -1364,7 +1289,7 @@ function style_review_legend(figure_handle, active_name)
 if ~isvalid(figure_handle) || ~isappdata(figure_handle, 'vtsegReviewLegend')
     return;
 end
-theme = review_theme();
+theme = vtseg.ReviewStyle.theme();
 dim_text = [0.45 0.48 0.53];
 records = getappdata(figure_handle, 'vtsegReviewLegend');
 for index = 1:numel(records)
@@ -1383,13 +1308,6 @@ for index = 1:numel(records)
         set(entry.label, 'ForegroundColor', dim_text, 'FontWeight', 'normal');
     end
 end
-end
-
-function set_review_title(ax, label)
-%SET_REVIEW_TITLE Axes title in the review theme; file names are shown verbatim.
-theme = review_theme();
-title(ax, label, 'Interpreter', 'none', 'Color', theme.text, ...
-    'FontSize', theme.font_size + 1, 'FontWeight', 'normal');
 end
 
 function Im = read_slice_image(path_image, file_name)

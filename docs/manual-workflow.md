@@ -419,7 +419,7 @@ contour-width slider, correction view, and final raw/contour overview figures.
 Use **Continue to correction** to leave this viewer. Its ignored case-local
 record is `seg/review_display_crop.json`.
 
-In the **Review/correct masks** window, use **Previous**, **Keep / Next**,
+In the **Mask correction: review slices** window, use **Previous**, **Keep / Next**,
 **Modify**, and **Go to slice** in the header bar to navigate. Display
 settings and the contour legend sit in the right-hand column. Select
 **Modify** to disable navigation and show structure-specific LV, RV, and Epi

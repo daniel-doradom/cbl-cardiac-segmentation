@@ -24,7 +24,8 @@ classdef ReviewStyle
                 'primary', [0.15 0.45 0.90], ...  % the one action to take next
                 'neutral', [0.26 0.30 0.36], ...  % every other action
                 'danger', [0.72 0.22 0.22], ...   % actions that throw work away
-                'font_size', 10);
+                'font_size', 10, ...
+                'show_toolstrip', false);         % MATLAB's figure toolstrip / menu bar
         end
 
         function handle = newFigure(name, varargin)
@@ -33,9 +34,18 @@ classdef ReviewStyle
         % titles created in the figure inherit light colours through
         % figure-level defaults, so plain title() and xlabel() calls stay
         % readable on the dark surface.
+        %
+        % MATLAB's figure toolstrip (Save As, Print, annotation tools; the menu
+        % bar and toolbar on older desktops) is hidden unless
+        % theme.show_toolstrip is true. Zoom, pan, rotate and export remain in
+        % the axes toolbar that appears when the pointer is over a plot.
             theme = vtseg.ReviewStyle.theme();
+            chrome = {};
+            if ~theme.show_toolstrip
+                chrome = {'MenuBar', 'none', 'ToolBar', 'none'};
+            end
             handle = figure('Name', name, 'NumberTitle', 'off', ...
-                'Color', theme.figure, varargin{:});
+                'Color', theme.figure, chrome{:}, varargin{:});
             % MATLAB's own "Figure N:" prefix is replaced by a shorter "FigN:"
             % so the number stays visible without crowding out the name.
             number = get(handle, 'Number');

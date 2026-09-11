@@ -420,8 +420,10 @@ Use **Continue to correction** to leave this viewer. Its ignored case-local
 record is `seg/review_display_crop.json`.
 
 In the **Review/correct masks** window, use **Previous**, **Keep / Next**,
-**Modify**, and **Go to slice** to navigate. Select **Modify** to disable
-navigation and show structure-specific LV, RV, and Epi actions:
+**Modify**, and **Go to slice** in the header bar to navigate. Display
+settings and the contour legend sit in the right-hand column. Select
+**Modify** to disable navigation and show structure-specific LV, RV, and Epi
+actions in the lower part of that column:
 
 - `keep` leaves that structure exactly as imported.
 - `edit` initializes draggable polygon vertices from the existing mask. All

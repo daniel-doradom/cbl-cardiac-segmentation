@@ -171,11 +171,11 @@ re-running either stage:
 PYTHONPATH=src python -m vtseg collect-review "$case"
 ```
 
-| Folder | Pair |
-| --- | --- |
-| `review/1_cine_fit/` | cine at the fitted frame |
-| `review/2_cine_lge_phase/` | cine at the LGE-matched phase |
-| `review/3_lge/` | native LGE, masks aligned into LGE space |
+| Folder                       | Pair                                     |
+| ---------------------------- | ---------------------------------------- |
+| `review/1_cine_fit/`       | cine at the fitted frame                 |
+| `review/2_cine_lge_phase/` | cine at the LGE-matched phase            |
+| `review/3_lge/`            | native LGE, masks aligned into LGE space |
 
 Each folder holds an `_image.nii.gz` and a `_labels.nii.gz` of matching
 geometry, named `<number>_<run>_<pair>_...`, for example
@@ -330,7 +330,7 @@ Take the CSV from a run whose assignment was already correct, or edit the
 when predictions are supplied. The run records `view_predictions` in provenance
 and warns that classification was bypassed.
 
-## 4. Export exactly the slices selected in Slicer
+## 4. Matlab export exactly the slices selected in Slicer
 
 Two different coordinate systems appear in the workflow:
 
@@ -494,18 +494,18 @@ in its provenance and QC.
 
 ## Troubleshooting
 
-| Symptom                                            | Action                                                                                                                                             |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `No module named vtseg`                          | Run commands from the repository root with`PYTHONPATH=src`, or install the package into the active environment.                                  |
-| GPU is not visible                                 | Do not run inference. Obtain the proper allocation, set`CUDA_VISIBLE_DEVICES` to that allocation, and verify with the PyTorch command in step 1. |
-| MATLAB says iso2mesh is missing                    | Run`clear classes`, `clear functions`, `rehash`, then `setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh')`.                       |
-| MATLAB stack contains excluded source slices       | Re-export with the default ordering and source values: do not use`--slice-order reference`.                                                      |
-| MATLAB reports`getNumericField` access/collision | Pull the latest repository source, clear MATLAB classes/functions, then use the targeted resume instructions above if meshing already completed.   |
-| Existing output refuses overwrite                  | Choose a new, descriptive`--output` directory. Do not delete prior case artifacts merely to rerun an experiment.                                 |
-| `No 4ch views were selected` in `raw/execution.log` | Correct the view assignment: see [When automatic view selection misses 4-chamber cine](#when-automatic-view-selection-misses-4-chamber-cine). |
-| `No tricuspid valve points` at the ED phase only | Move the breath-hold reference with `--ed-frame`; see [When only the ED phase lacks tricuspid valve points](#when-only-the-ed-phase-lacks-tricuspid-valve-points). |
-| `TclError: no display name and no $DISPLAY` | Reconnect with `ssh -Y`, or supply `--view-predictions` instead of using the GUI. |
-| Nothing to open in 3D Slicer | Run `vtseg collect-review "$case"` to build `<case>/review/`. |
+| Symptom                                                 | Action                                                                                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `No module named vtseg`                               | Run commands from the repository root with`PYTHONPATH=src`, or install the package into the active environment.                                                  |
+| GPU is not visible                                      | Do not run inference. Obtain the proper allocation, set`CUDA_VISIBLE_DEVICES` to that allocation, and verify with the PyTorch command in step 1.                 |
+| MATLAB says iso2mesh is missing                         | Run`clear classes`, `clear functions`, `rehash`, then `setup_vtseg('Iso2meshPath', '/authorized/path/to/iso2mesh')`.                                       |
+| MATLAB stack contains excluded source slices            | Re-export with the default ordering and source values: do not use`--slice-order reference`.                                                                      |
+| MATLAB reports`getNumericField` access/collision      | Pull the latest repository source, clear MATLAB classes/functions, then use the targeted resume instructions above if meshing already completed.                   |
+| Existing output refuses overwrite                       | Choose a new, descriptive`--output` directory. Do not delete prior case artifacts merely to rerun an experiment.                                                 |
+| `No 4ch views were selected` in `raw/execution.log` | Correct the view assignment: see[When automatic view selection misses 4-chamber cine](#when-automatic-view-selection-misses-4-chamber-cine).                        |
+| `No tricuspid valve points` at the ED phase only      | Move the breath-hold reference with`--ed-frame`; see [When only the ED phase lacks tricuspid valve points](#when-only-the-ed-phase-lacks-tricuspid-valve-points). |
+| `TclError: no display name and no $DISPLAY`           | Reconnect with`ssh -Y`, or supply `--view-predictions` instead of using the GUI.                                                                               |
+| Nothing to open in 3D Slicer                            | Run`vtseg collect-review "$case"` to build `<case>/review/`.                                                                                                   |
 
 ## CT variation
 

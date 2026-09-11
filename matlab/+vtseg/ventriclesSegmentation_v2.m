@@ -601,14 +601,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         if ~isempty(image_handles)
             set(ax, 'CLim', current_window);
         end
-        contour_handles = findobj(ax, 'Type', 'contour');
-        if ~isempty(contour_handles)
-            if contour_width <= 0
-                set(contour_handles, 'Visible', 'off');
-            else
-                set(contour_handles, 'Visible', 'on', 'LineWidth', contour_width);
-            end
-        end
+        apply_review_contour_widths(figure_handle, ax);
         set_active_edit_roi_visibility(figure_handle, contour_width > 0);
         update_display_control_text();
         drawnow;
@@ -695,9 +688,12 @@ function [mask, did_update, replace_entire_slice] = correct_one_mask( ...
     mask = logical(current_mask);
 
     figure_handle = ancestor(ax, 'figure');
+    emphasize_review_structure(figure_handle, ax, structure_name, color);
     action = choose_review_action(figure_handle, ...
         sprintf('%s action', structure_name), ...
-        {'Keep', 'keep'; 'Edit', 'edit'; 'Redraw', 'redraw'; 'Clear', 'clear'});
+        {'Keep', 'keep'; 'Edit', 'edit'; 'Redraw', 'redraw'; 'Clear', 'clear'}, ...
+        review_structure_text_color(color));
+    restore_review_emphasis(figure_handle, ax);
 
     if strcmp(action, 'keep') || strcmp(action, 'cancel')
         return;
@@ -830,8 +826,14 @@ while add_component
 end
 end
 
-function action = choose_review_action(figure_handle, prompt, choices)
+function action = choose_review_action(figure_handle, prompt, choices, title_color)
 %CHOOSE_REVIEW_ACTION Present one modal action panel inside the review figure.
+% title_color (optional) colours the prompt; structure prompts pass the
+% structure's contour colour so it is obvious which outline is being decided.
+theme = review_theme();
+if nargin < 4 || isempty(title_color)
+    title_color = theme.text;
+end
 action = 'cancel';
 if ~isvalid(figure_handle)
     return;
@@ -840,6 +842,7 @@ end
 setappdata(figure_handle, 'vtsegReviewChoice', '');
 layout = review_layout();
 panel = review_section(figure_handle, layout.action_slot, prompt);
+set(panel, 'FontSize', theme.font_size + 2, 'ForegroundColor', title_color);
 choice_count = size(choices, 1);
 margin = 0.06;
 gap = 0.05;
@@ -1046,11 +1049,12 @@ function plot_mask_contour(ax, mask, color, line_width)
 
     if any(mask(:)) && any(~mask(:))
         if line_width <= 0
-            contour(ax, mask, [0.5 0.5], color, ...
+            [~, handle] = contour(ax, mask, [0.5 0.5], color, ...
                 'LineWidth', 1.5, 'Visible', 'off');
         else
-            contour(ax, mask, [0.5 0.5], color, 'LineWidth', line_width);
+            [~, handle] = contour(ax, mask, [0.5 0.5], color, 'LineWidth', line_width);
         end
+        set(handle, 'Tag', review_contour_tag(color));
     end
 end
 
@@ -1228,6 +1232,8 @@ end
 
 function review_legend(panel, has_lepi)
 %REVIEW_LEGEND Colour swatch and name for each contour drawn on the image.
+% Names match the structure names used by the correction prompts, and the
+% rows are kept on the figure so a prompt can grey out the others.
 entries = {'LV endocardium', [1 0 0]; 'RV endocardium', [0 1 1]; 'Epicardium', [0 1 0]};
 if has_lepi
     entries(end + 1, :) = {'LV epicardium', [0 0 1]};
@@ -1235,12 +1241,128 @@ end
 row_height = 0.16;
 gap = 0.06;
 top = 0.90;
+records = struct('name', {}, 'color', {}, 'swatch', {}, 'label', {});
 for index = 1:size(entries, 1)
     y = top - index * row_height - (index - 1) * gap;
-    uicontrol(panel, 'Style', 'text', 'Units', 'normalized', ...
+    swatch = uicontrol(panel, 'Style', 'text', 'Units', 'normalized', ...
         'Position', [0.07, y + 0.02, 0.10, row_height - 0.04], 'String', '', ...
         'BackgroundColor', entries{index, 2});
-    review_label(panel, [0.22 y 0.74 row_height], entries{index, 1}, 'left', false);
+    label = review_label(panel, [0.22 y 0.74 row_height], entries{index, 1}, 'left', false);
+    records(end + 1) = struct('name', entries{index, 1}, 'color', entries{index, 2}, ...
+        'swatch', swatch, 'label', label); %#ok<AGROW>
+end
+setappdata(ancestor(panel, 'figure'), 'vtsegReviewLegend', records);
+end
+
+function tag = review_contour_tag(color)
+%REVIEW_CONTOUR_TAG Tag identifying which structure colour a contour was drawn in.
+if ischar(color)
+    key = color;
+else
+    key = sprintf('%.2f_', color);
+end
+tag = ['vtsegContour_' key];
+end
+
+function rgb = review_structure_text_color(color)
+%REVIEW_STRUCTURE_TEXT_COLOR The structure's colour, lifted where it would be
+% hard to read as text on the dark panel.
+switch color
+    case 'r'
+        rgb = [1.00 0.30 0.30];
+    case 'c'
+        rgb = [0.20 1.00 1.00];
+    case 'g'
+        rgb = [0.35 1.00 0.35];
+    case 'b'
+        rgb = [0.45 0.65 1.00];
+    otherwise
+        theme = review_theme();
+        rgb = theme.text;
+end
+end
+
+function apply_review_contour_widths(figure_handle, ax)
+%APPLY_REVIEW_CONTOUR_WIDTHS Give every contour the slider width, then thin
+% every structure except the one a prompt is currently about.
+if isempty(figure_handle) || ~isvalid(figure_handle)
+    return;
+end
+[~, contour_width] = current_review_display_settings(ax, []);
+contour_handles = findobj(ax, 'Type', 'contour');
+if isempty(contour_handles)
+    return;
+end
+if contour_width <= 0
+    set(contour_handles, 'Visible', 'off');
+    return;
+end
+set(contour_handles, 'Visible', 'on', 'LineWidth', contour_width);
+if ~isappdata(figure_handle, 'vtsegReviewEmphasis')
+    return;
+end
+emphasis = getappdata(figure_handle, 'vtsegReviewEmphasis');
+if isempty(emphasis)
+    return;
+end
+active_tag = review_contour_tag(emphasis.color);
+thin_width = max(0.5, 0.4 * contour_width);
+for index = 1:numel(contour_handles)
+    if ~strcmp(get(contour_handles(index), 'Tag'), active_tag)
+        set(contour_handles(index), 'LineWidth', thin_width);
+    end
+end
+end
+
+function emphasize_review_structure(figure_handle, ax, structure_name, color)
+%EMPHASIZE_REVIEW_STRUCTURE While a prompt is about one structure, thin the
+% other contours on the image and grey out their legend rows.
+if isempty(figure_handle) || ~isvalid(figure_handle)
+    return;
+end
+setappdata(figure_handle, 'vtsegReviewEmphasis', ...
+    struct('name', structure_name, 'color', color));
+apply_review_contour_widths(figure_handle, ax);
+style_review_legend(figure_handle, structure_name);
+drawnow;
+end
+
+function restore_review_emphasis(figure_handle, ax)
+%RESTORE_REVIEW_EMPHASIS Undo emphasize_review_structure.
+if isempty(figure_handle) || ~isvalid(figure_handle)
+    return;
+end
+if isappdata(figure_handle, 'vtsegReviewEmphasis')
+    rmappdata(figure_handle, 'vtsegReviewEmphasis');
+end
+apply_review_contour_widths(figure_handle, ax);
+style_review_legend(figure_handle, '');
+drawnow;
+end
+
+function style_review_legend(figure_handle, active_name)
+%STYLE_REVIEW_LEGEND Grey out every legend row but active_name; '' restores all.
+if ~isvalid(figure_handle) || ~isappdata(figure_handle, 'vtsegReviewLegend')
+    return;
+end
+theme = review_theme();
+dim_text = [0.45 0.48 0.53];
+records = getappdata(figure_handle, 'vtsegReviewLegend');
+for index = 1:numel(records)
+    entry = records(index);
+    if ~isvalid(entry.swatch) || ~isvalid(entry.label)
+        continue;
+    end
+    if isempty(active_name)
+        set(entry.swatch, 'BackgroundColor', entry.color);
+        set(entry.label, 'ForegroundColor', theme.text, 'FontWeight', 'normal');
+    elseif strcmp(entry.name, active_name)
+        set(entry.swatch, 'BackgroundColor', entry.color);
+        set(entry.label, 'ForegroundColor', theme.text, 'FontWeight', 'bold');
+    else
+        set(entry.swatch, 'BackgroundColor', 0.35 * entry.color + 0.65 * theme.panel);
+        set(entry.label, 'ForegroundColor', dim_text, 'FontWeight', 'normal');
+    end
 end
 end
 

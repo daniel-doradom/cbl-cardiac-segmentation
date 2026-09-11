@@ -423,7 +423,10 @@ In the **Review/correct masks** window, use **Previous**, **Keep / Next**,
 **Modify**, and **Go to slice** in the header bar to navigate. Display
 settings and the contour legend sit in the right-hand column. Select
 **Modify** to disable navigation and show structure-specific LV, RV, and Epi
-actions in the lower part of that column:
+actions in the lower part of that column. While one structure's prompt is
+open, its name is shown in its contour colour, the other legend rows grey
+out, and the other contours on the image thin, so it is clear which outline
+the choice applies to:
 
 - `keep` leaves that structure exactly as imported.
 - `edit` initializes draggable polygon vertices from the existing mask. All

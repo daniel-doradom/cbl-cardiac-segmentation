@@ -25,7 +25,7 @@ classdef ReviewStyle
                 'neutral', [0.26 0.30 0.36], ...  % every other action
                 'danger', [0.72 0.22 0.22], ...   % actions that throw work away
                 'font_size', 10, ...
-                'show_toolstrip', false);         % MATLAB's figure toolstrip / menu bar
+                'show_toolstrip', true);          % keep true: see newFigure
         end
 
         function handle = newFigure(name, varargin)
@@ -35,10 +35,12 @@ classdef ReviewStyle
         % figure-level defaults, so plain title() and xlabel() calls stay
         % readable on the dark surface.
         %
-        % MATLAB's figure toolstrip (Save As, Print, annotation tools; the menu
-        % bar and toolbar on older desktops) is hidden unless
-        % theme.show_toolstrip is true. Zoom, pan, rotate and export remain in
-        % the axes toolbar that appears when the pointer is over a plot.
+        % theme.show_toolstrip = false hides MATLAB's figure toolstrip (menu bar
+        % and toolbar on older desktops). Leave it true: on the new desktop a
+        % figure without a toolstrip opens in its own window instead of as a
+        % tab in the shared Figures container, and the tabs are wanted. To
+        % get the toolstrip out of the way, minimise it once with the arrow at
+        % its right edge; MATLAB remembers that for the container.
             theme = vtseg.ReviewStyle.theme();
             chrome = {};
             if ~theme.show_toolstrip

@@ -46,6 +46,18 @@ and recorded.
 No fallback task exists. A missing CLI, absent task, license failure, unavailable
 weights, or inference error leaves a machine-readable failed/blocked status.
 
+## Short-axis MPR comparison
+
+For CT manual meshing, run TotalSegmentator twice: once on the full native CT
+and once directly on a complete DICOM short-axis MPR. Then use
+`vtseg map-ct-masks-to-mpr <native-case> <mpr-case>` to resample the native
+canonical masks onto the MPR grid with nearest-neighbor interpolation. The
+command requires matching Study Instance UID and Frame of Reference UID and
+will fail rather than estimate a registration. `vtseg collect-review <mpr-case>`
+creates the two Slicer-ready comparisons. Promote only the reviewer-selected
+candidate with `vtseg promote-ct-candidate`; see the manual workflow runbook
+for the complete commands and MATLAB export.
+
 ## Current machine boundary at repository creation
 
 The host has Python 3.14.4, no installed TotalSegmentator or PyTorch package,

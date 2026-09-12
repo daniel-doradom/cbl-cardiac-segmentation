@@ -68,9 +68,12 @@ Weasis MPR export. Biv-me needs multi-view cine bSSFP/FIESTA information; LGE
 alignment needs a native LGE/MDE series from the same exam. MPR exports are
 useful for visual inspection but are not a substitute for the full study.
 
-For CT, provide the original CT series or an authorized source directory from
-which the desired series can be explicitly selected. TotalSegmentator runs on
-the prepared CT volume.
+For CT, provide the original CT study and select one explicit regular cardiac
+CT series. For the CT-to-MATLAB comparison workflow, also provide a complete
+short-axis Weasis MPR as **DICOM**, not screenshots or NIfTI-only output. Store
+that ignored MPR export under `data/derived/ct-mpr/<case>/`. The native CT and
+MPR must share both Study Instance UID and Frame of Reference UID; the pipeline
+refuses to invent a registration if they do not.
 
 ## 3. Run automatic cine-MRI segmentation and LGE alignment
 
@@ -514,24 +517,84 @@ in its provenance and QC.
 | `TclError: no display name and no $DISPLAY`           | Reconnect with`ssh -Y`, or supply `--view-predictions` instead of using the GUI.                                                                               |
 | Nothing to open in 3D Slicer                            | Run`vtseg collect-review "$case"` to build `<case>/review/`.                                                                                                   |
 
-## CT variation
+## CT-to-MATLAB workflow
 
-CT uses the same prepare, Slicer review, and ignored-result conventions, but
-uses TotalSegmentator instead of biv-me:
+Use a fresh `legacy/` folder for each native CT and MPR run. The example below
+uses NSHA04's native `Cardiac CT - 28 SEP 2021` DICOM study and a full DICOM
+short-axis MPR stored at `data/derived/ct-mpr/nsha04-cardiac-sa/`. First run
+`inspect-dicom` for each input and replace both UID placeholders with explicit,
+regular CT series UIDs from their inventories.
 
 ```bash
 conda activate vtseg-ct
-PYTHONPATH=src python -m vtseg segment-ct results/case-ct \
-  --device gpu --force-split
+nativeStudy='data/diagnostics/NSHA4/Diagnostics/ECGi-VT- 01-04- Cardiac CT- 28 SEP 2021/DICOM'
+mprStudy='data/derived/ct-mpr/nsha04-cardiac-sa'
+nativeCase='results/legacy/nsha04-ct-native-v1'
+mprCase='results/legacy/nsha04-ct-sa-v1'
+nativeSeriesUid='NATIVE_CARDIAC_CT_SERIES_UID'
+mprSeriesUid='SHORT_AXIS_MPR_SERIES_UID'
+
+PYTHONPATH=src python -m vtseg inspect-dicom "$nativeStudy" --json "$nativeCase/source/dicom_inventory.json"
+PYTHONPATH=src python -m vtseg inspect-dicom "$mprStudy" --json "$mprCase/source/dicom_inventory.json"
+PYTHONPATH=src python -m vtseg prepare-series "$nativeStudy" --series "$nativeSeriesUid" --output "$nativeCase"
+PYTHONPATH=src python -m vtseg prepare-series "$mprStudy" --series "$mprSeriesUid" --output "$mprCase"
+PYTHONPATH=src python -m vtseg check-ct-backend
+PYTHONPATH=src python -m vtseg segment-ct "$nativeCase" --device gpu --force-split
+PYTHONPATH=src python -m vtseg segment-ct "$mprCase" --device gpu --force-split
+PYTHONPATH=src python -m vtseg map-ct-masks-to-mpr "$nativeCase" "$mprCase"
+PYTHONPATH=src python -m vtseg collect-review "$mprCase"
 ```
 
-One-line equivalent:
+One-line equivalents:
 
 ```bash
-conda activate vtseg-ct && PYTHONPATH=src python -m vtseg segment-ct results/case-ct --device gpu --force-split
+PYTHONPATH=src python -m vtseg inspect-dicom "$nativeStudy" --json "$nativeCase/source/dicom_inventory.json"
+PYTHONPATH=src python -m vtseg inspect-dicom "$mprStudy" --json "$mprCase/source/dicom_inventory.json"
+PYTHONPATH=src python -m vtseg prepare-series "$nativeStudy" --series "$nativeSeriesUid" --output "$nativeCase"
+PYTHONPATH=src python -m vtseg prepare-series "$mprStudy" --series "$mprSeriesUid" --output "$mprCase"
+PYTHONPATH=src python -m vtseg segment-ct "$nativeCase" --device gpu --force-split
+PYTHONPATH=src python -m vtseg segment-ct "$mprCase" --device gpu --force-split
+PYTHONPATH=src python -m vtseg map-ct-masks-to-mpr "$nativeCase" "$mprCase"
+PYTHONPATH=src python -m vtseg collect-review "$mprCase"
 ```
 
-Its automatic output is
-`results/case-ct/segmentation/totalsegmentator/normalized/`. The canonical mask
-contract is the same, but the biv-me/LGE alignment and cine-MRI MATLAB export
-steps do not apply to CT without a separately validated CT manual workflow.
+Open both pairs in Slicer, always loading image and labels from the same pair:
+
+| Folder | Candidate |
+| --- | --- |
+| `review/1_direct_mpr/` | TotalSegmentator run directly on the short-axis MPR |
+| `review/2_native_ct_mapped/` | Native full-CT TotalSegmentator masks resampled onto that exact MPR grid |
+
+Both pairs use the same MPR volume geometry. Select the candidate manually;
+there is no automatic winner. Then promote it to the only location used for CT
+manual work:
+
+```bash
+bestCase='results/best/nsha04-ct'
+PYTHONPATH=src python -m vtseg promote-ct-candidate "$mprCase" --candidate direct-mpr --output "$bestCase"
+PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/selected/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
+```
+
+One-line equivalents:
+
+```bash
+PYTHONPATH=src python -m vtseg promote-ct-candidate "$mprCase" --candidate direct-mpr --output "$bestCase"
+PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/selected/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
+```
+
+Use `--candidate native-mapped` when that is the Slicer-approved result. CT
+exports contain `raw/` short-axis CT DICOMs, `seg/Lendo.mat`, `Rendo.mat`,
+`Epi.mat`, `myocardium.mat`, and `seg/vtseg_export_manifest.json`. They retain
+the source DICOM filename/position mapping. On the workstation run:
+
+```matlab
+caseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...
+    'manual', 'matlab-source-START-END-COUNTslices');
+vtseg.main_ct_tetmesh(caseDirectory, []);
+```
+
+The CT MATLAB entry point applies DICOM rescale slope/intercept so the review
+image is in Hounsfield units. When CT Window Center/Width is present, it is the
+initial display range; its existing window/level, crop, contour, edit, compare,
+mesh, and VTK controls remain available. CT scar/fat analysis is not part of
+this workflow.

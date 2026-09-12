@@ -20,6 +20,7 @@ HEADER_TAGS = [
     "Manufacturer", "ManufacturerModelName", "MagneticFieldStrength", "SequenceName",
     "ScanningSequence", "SequenceVariant", "ImageType", "Rows", "Columns", "PixelSpacing",
     "SliceThickness", "SpacingBetweenSlices", "ImageOrientationPatient", "ImagePositionPatient",
+    "FrameOfReferenceUID", "RescaleSlope", "RescaleIntercept", "WindowCenter", "WindowWidth",
     "InstanceNumber", "AcquisitionTime", "SeriesTime", "TriggerTime",
     "TemporalPositionIdentifier", "NumberOfTemporalPositions", "CardiacNumberOfImages",
     "NumberOfFrames",

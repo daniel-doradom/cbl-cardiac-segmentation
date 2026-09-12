@@ -28,6 +28,19 @@ caseDirectory = fullfile(repoRoot, 'results', 'case-name', 'manual', 'matlab');
 vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);
 ```
 
+For a Slicer-approved CT short-axis MPR export promoted under `results/best/`,
+use the CT entry point instead. It has the same correction, mesh, and VTK
+output stages, but no MRI scar/LGE stage:
+
+```matlab
+ctCaseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...
+    'manual', 'matlab-source-START-END-COUNTslices');
+vtseg.main_ct_tetmesh(ctCaseDirectory, []);
+```
+
+CT DICOMs are displayed after RescaleSlope/RescaleIntercept is applied (HU),
+using the DICOM Window Center/Width as the initial range when supplied.
+
 Use `vtseg.visualize_bivme_lge_masks(caseDirectory, [])` for the interactive
 slice/mask review. It first prompts for one rectangular display crop on a
 representative slice; that ROI is reused for the slider, mask-fill toggle, and

@@ -43,3 +43,31 @@ def test_import_matlab_masks_reconstructs_reference_grid(tmp_path):
     assert set(np.unique(combined)) == {0, 1, 2, 3}
     assert (output.parent / "qc" / "mask_qc.json").is_file()
     assert (output.parent / "provenance.json").is_file()
+
+
+def test_import_reads_generic_ct_manifest_and_preserves_ct_provenance(tmp_path):
+    scipy = pytest.importorskip("scipy.io")
+    reference = tmp_path / "reference"
+    (reference / "volume").mkdir(parents=True)
+    (reference / "source").mkdir()
+    image = nib.Nifti1Image(np.zeros((4, 4, 2), dtype=np.float32), np.eye(4))
+    nib.save(image, reference / "volume" / "image.nii.gz")
+    (reference / "source" / "selected_series.json").write_text(json.dumps({
+        "study_uid": "ct-study", "series_uid": "ct-series",
+        "series_characterization": {"modality": "CT"},
+    }), encoding="utf-8")
+    seg = tmp_path / "matlab" / "seg"
+    seg.mkdir(parents=True)
+    for name in ("Lendo", "Rendo", "Epi"):
+        values = np.zeros((4, 4, 2), dtype=np.uint8)
+        values[1, 1, :] = 1 if name != "Rendo" else 0
+        if name == "Rendo":
+            values[2, 1, :] = 1
+        scipy.savemat(seg / f"{name}.mat", {name: values})
+    (seg / "vtseg_export_manifest.json").write_text(json.dumps({"modality": "CT", "slices": [
+        {"reference_volume_index": 0}, {"reference_volume_index": 1}
+    ]}), encoding="utf-8")
+    output = tmp_path / "manual" / "normalized"
+    import_matlab_case(seg.parent, reference, output)
+    provenance = json.loads((output.parent / "provenance.json").read_text(encoding="utf-8"))
+    assert provenance["modality"] == "CT"

@@ -14,6 +14,7 @@ from typing import Any
 
 import nibabel as nib
 import numpy as np
+import pydicom
 
 from vtseg.errors import NormalizationError
 from vtseg.provenance import (
@@ -34,6 +35,7 @@ MATLAB_MASKS = {
     "myocardium": "myocardium",
     "Epi": None,  # union of the three canonical masks
 }
+EXPORT_MANIFEST = "vtseg_export_manifest.json"
 
 
 def _base_to_apex_indices(epicardium: np.ndarray) -> tuple[list[int], str]:
@@ -180,6 +182,9 @@ def export_matlab_case(
     if not selection_path.is_file() or not image_path.is_file():
         raise NormalizationError(f"reference is not a prepared case: {reference}")
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    modality = selection.get("series_characterization", {}).get("modality")
+    if modality not in {"CT", "MR"}:
+        raise NormalizationError(f"MATLAB export requires CT or MR reference data, got {modality!r}")
     instance_paths = [Path(p) for p in selection["selected_instance_paths"]]
 
     image = nib.load(str(image_path))
@@ -242,6 +247,16 @@ def export_matlab_case(
     for index, name in zip(ordered, names):
         shutil.copy2(instance_paths[index], raw_dir / name)
 
+    source_slice_metadata = []
+    for index in ordered:
+        dataset = pydicom.dcmread(str(instance_paths[index]), stop_before_pixels=True)
+        position = getattr(dataset, "ImagePositionPatient", None)
+        source_slice_metadata.append({
+            "source_dicom_filename": instance_paths[index].name,
+            "source_dicom_path": str(instance_paths[index]),
+            "image_position_patient": [float(value) for value in position] if position is not None else None,
+        })
+
     try:
         from scipy.io import savemat
     except ImportError as exc:
@@ -286,6 +301,7 @@ def export_matlab_case(
                 "dicom_file": names[position],
                 "reference_volume_index": int(index),
                 "base_to_apex_reference_slice": base_to_apex_positions[int(index)],
+                **source_slice_metadata[position],
                 "epi_voxels": written["Epi"][position],
                 "lendo_voxels": written["Lendo"][position],
                 "rendo_voxels": written["Rendo"][position],
@@ -293,7 +309,8 @@ def export_matlab_case(
             for position, index in enumerate(ordered)
         ],
     }
-    write_json(seg_dir / "bivme_export_manifest.json", manifest)
+    manifest["modality"] = modality
+    write_json(seg_dir / EXPORT_MANIFEST, manifest)
     write_json(output / "manifest.json", manifest)
 
     provenance = base_provenance(
@@ -301,7 +318,7 @@ def export_matlab_case(
         input_study_uid=selection["study_uid"],
         selected_series_uid=selection["series_uid"],
         selected_temporal_frame=selection.get("selected_temporal_frame"),
-        modality="MR",
+        modality=modality,
         source_dicom_count=len(ordered),
         prepared_volume_dimensions=manifest["mask_dimensions"],
         voxel_spacing=list(image.header.get_zooms()[:3]),
@@ -327,10 +344,10 @@ def export_matlab_case(
         software_versions={**software_versions(), "scipy": package_version("scipy")},
         warnings=[
             "MATLAB mask stacks assume readdata orders raw/ by file name; verify against "
-            "seg/bivme_export_manifest.json before meshing",
+            f"seg/{EXPORT_MANIFEST} before meshing",
             "selected endpoints are always retained; intermediate selected slices can differ by one "
             "reference slice and MATLAB uses their actual DICOM positions",
-            "base-to-apex ordering is inferred from biv-me epicardial endpoint area; visually confirm "
+            "base-to-apex ordering is inferred from endpoint epicardial area; visually confirm "
             "the first and last exported slices before manual correction",
             "masks are model-derived, not manual contours; review them before meshing",
         ],

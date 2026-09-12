@@ -75,6 +75,13 @@ def prepare_series(
     _validate_headers(datasets)
     selected_datasets, temporal_selection = select_frame(datasets, frame)
     _validate_headers(selected_datasets)
+    frame_of_reference_uids = {
+        str(getattr(dataset, "FrameOfReferenceUID", ""))
+        for dataset in selected_datasets
+        if str(getattr(dataset, "FrameOfReferenceUID", ""))
+    }
+    if len(frame_of_reference_uids) > 1:
+        raise GeometryError("selected frame has inconsistent FrameOfReferenceUID values")
 
     path_by_id = {id(record.dataset): record.path for record in records}
     selected_datasets = spatial_order(selected_datasets)
@@ -107,7 +114,7 @@ def prepare_series(
     source_dir.mkdir(parents=True, exist_ok=True)
     write_json(source_dir / "dicom_inventory.json", inventory_report(inventory))
     selection = {
-        "schema_version": 1,
+        "schema_version": 2,
         "input_root": str(inventory.root),
         "study_uid": records[0].study_uid,
         "series_uid": series_uid,
@@ -115,6 +122,9 @@ def prepare_series(
         "selected_instance_count": len(selected_paths),
         "selected_instance_paths": selected_paths,
         "series_characterization": summary,
+        # Mapping a native CT result into a Weasis MPR is only safe when both
+        # DICOM series explicitly share this patient-coordinate frame.
+        "frame_of_reference_uid": next(iter(frame_of_reference_uids), None),
     }
     write_json(source_dir / "selected_series.json", selection)
 

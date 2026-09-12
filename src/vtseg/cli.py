@@ -16,6 +16,7 @@ from vtseg.segmentation.bivme import BREATHHOLD_SHIFT_MODES, BivMeMRIBackend
 from vtseg.segmentation.bivme_lge import align_bivme_to_lge
 from vtseg.segmentation.matlab_export import export_matlab_case, preview_matlab_slices
 from vtseg.segmentation.matlab_import import import_matlab_case
+from vtseg.segmentation.ct_mpr import map_native_ct_masks_to_mpr, promote_ct_candidate
 from vtseg.segmentation.totalsegmentator import TotalSegmentatorCTBackend
 
 
@@ -75,6 +76,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="split a large volume into parts to reduce TotalSegmentator memory use",
     )
+
+    map_ct_parser = sub.add_parser(
+        "map-ct-masks-to-mpr",
+        help="nearest-neighbor map native CT canonical masks into a prepared short-axis MPR",
+    )
+    map_ct_parser.add_argument("native_case_directory", type=Path)
+    map_ct_parser.add_argument("mpr_case_directory", type=Path)
+
+    promote_ct_parser = sub.add_parser(
+        "promote-ct-candidate",
+        help="copy a Slicer-approved CT MPR candidate into an explicit best result",
+    )
+    promote_ct_parser.add_argument("mpr_case_directory", type=Path)
+    promote_ct_parser.add_argument("--candidate", required=True, choices=("direct-mpr", "native-mapped"))
+    promote_ct_parser.add_argument("--output", required=True, type=Path)
 
     bivme_check_parser = sub.add_parser(
         "check-bivme-backend",
@@ -247,6 +263,22 @@ def main(argv: list[str] | None = None) -> int:
                 "Segmentation and QC complete: "
                 f"{args.case_directory.resolve() / 'segmentation' / 'totalsegmentator' / 'normalized'}"
             )
+            print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
+            return 0
+
+        if args.command == "map-ct-masks-to-mpr":
+            provenance = map_native_ct_masks_to_mpr(
+                args.native_case_directory, args.mpr_case_directory, repo_root=_repo_root()
+            )
+            print("Native CT masks mapped onto the MPR grid with nearest-neighbor interpolation")
+            print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
+            return 0
+
+        if args.command == "promote-ct-candidate":
+            provenance = promote_ct_candidate(
+                args.mpr_case_directory, args.candidate, args.output, repo_root=_repo_root()
+            )
+            print(f"Promoted {args.candidate} CT candidate to {args.output.resolve()}")
             print(json.dumps({"warnings": provenance["warnings"]}, indent=2))
             return 0
 

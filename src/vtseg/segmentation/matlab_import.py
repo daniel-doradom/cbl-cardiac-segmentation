@@ -42,7 +42,10 @@ def import_matlab_case(
     reference = Path(reference_directory).expanduser().resolve()
     output = Path(output_directory).expanduser().resolve()
     seg = matlab_case / "seg"
-    manifest_path = seg / "bivme_export_manifest.json"
+    manifest_path = seg / "vtseg_export_manifest.json"
+    if not manifest_path.is_file():
+        # Existing MRI exports predate the modality-neutral manifest name.
+        manifest_path = seg / "bivme_export_manifest.json"
     image_path = reference / "volume" / "image.nii.gz"
     selection_path = reference / "source" / "selected_series.json"
     if not manifest_path.is_file() or not image_path.is_file() or not selection_path.is_file():
@@ -83,12 +86,19 @@ def import_matlab_case(
     qc_path = manual_root / "qc" / "mask_qc.json"
     qc = run_backend_qc(reference, normalized_directory=output, report_path=qc_path)
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    modality = selection.get("series_characterization", {}).get("modality")
+    # Old exports did not carry modality in their minimal selected-series data.
+    # They were biv-me MRI exports, so preserve their read compatibility.
+    if modality is None and manifest_path.name == "bivme_export_manifest.json":
+        modality = "MR"
+    if modality not in {"CT", "MR"}:
+        raise NormalizationError(f"reference modality is not supported for MATLAB import: {modality!r}")
     provenance = base_provenance(
         git_commit=git_commit(repo_root) if repo_root else None,
         input_study_uid=selection["study_uid"],
         selected_series_uid=selection["series_uid"],
         selected_temporal_frame=selection.get("selected_temporal_frame"),
-        modality="MR",
+        modality=modality,
         source_dicom_count=len(slices),
         prepared_volume_dimensions=list(image.shape),
         voxel_spacing=list(image.header.get_zooms()[:3]),

@@ -51,6 +51,23 @@ def _geometry(path: Path) -> tuple[tuple[int, ...], Any]:
 
 
 def _pair_specs(case: Path) -> list[dict[str, Any]]:
+    selection = _read_json(case / "source" / "selected_series.json")
+    if selection.get("series_characterization", {}).get("modality") == "CT":
+        image = case / "volume" / SOURCE_IMAGE_NAME
+        return [
+            {
+                "id": "1_direct_mpr", "space": "ct_short_axis_mpr", "frame": None,
+                "description": "TotalSegmentator run directly on the short-axis CT MPR",
+                "image": image,
+                "labels": case / "segmentation" / "totalsegmentator" / "normalized" / SOURCE_LABELS_NAME,
+            },
+            {
+                "id": "2_native_ct_mapped", "space": "ct_short_axis_mpr", "frame": None,
+                "description": "native full-CT TotalSegmentator masks mapped onto the same short-axis MPR grid",
+                "image": image,
+                "labels": case / "segmentation" / "native_ct_mapped" / "normalized" / SOURCE_LABELS_NAME,
+            },
+        ]
     bivme = case / "segmentation" / "bivme"
     aligned = bivme / "lge_aligned"
     metric_cine = case / "registration" / "bivme_to_lge" / "metric_masks" / "cine"
@@ -176,7 +193,7 @@ def collect_review(case_directory: str | Path) -> dict[str, Any]:
 
     if not collected:
         raise VTSegError(
-            f"no reviewable pairs found in {case}; run segment-mri-bivme first"
+            f"no reviewable pairs found in {case}; run the relevant segmentation stage first"
         )
 
     registration = _read_json(
@@ -206,6 +223,11 @@ def collect_review(case_directory: str | Path) -> dict[str, Any]:
     for stage in (
         case / "segmentation" / "bivme" / "provenance.json",
         case / "segmentation" / "bivme" / "lge_aligned" / "provenance.json",
+    ):
+        warnings.extend(_read_json(stage).get("warnings", []))
+    for stage in (
+        case / "segmentation" / "totalsegmentator" / "provenance.json",
+        case / "segmentation" / "native_ct_mapped" / "provenance.json",
     ):
         warnings.extend(_read_json(stage).get("warnings", []))
 

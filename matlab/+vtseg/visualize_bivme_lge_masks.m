@@ -33,11 +33,11 @@ for index = 1:numel(masks)
     end
 end
 
-first_image = dicomread(fullfile(raw_path, files(1).name));
-images = zeros([size(first_image), slice_count], 'like', first_image);
+first_image = vtseg.read_dicom_image(fullfile(raw_path, files(1).name));
+images = zeros([size(first_image), slice_count]);
 images(:, :, 1) = first_image;
 for index = 2:slice_count
-    current_image = dicomread(fullfile(raw_path, files(index).name));
+    current_image = vtseg.read_dicom_image(fullfile(raw_path, files(index).name));
     if ~isequal(size(current_image), size(first_image))
         error('DICOM image dimensions are inconsistent in raw/.');
     end
@@ -248,7 +248,11 @@ for index = 1:slice_count
     metadata(index).dicom_file = files(index).name;
 end
 
-manifest_path = fullfile(seg_path, 'bivme_export_manifest.json');
+manifest_path = fullfile(seg_path, 'vtseg_export_manifest.json');
+if ~isfile(manifest_path)
+    % Compatibility with MATLAB exports produced before the generic manifest.
+    manifest_path = fullfile(seg_path, 'bivme_export_manifest.json');
+end
 if ~isfile(manifest_path)
     return;
 end

@@ -54,7 +54,7 @@ for file = folder'
         disp(['Segmenting',' ', file.name])
         f = strcat(path_image,file.name);
         f_info = dicominfo(f);
-        Im = dicomread(f_info);
+        Im = vtseg.read_dicom_image(f_info);
         [imgH,imgW,imgD] = size(Im);
 
 
@@ -911,7 +911,7 @@ function [display_image, h_img] = show_slice_with_masks( ...
 
     f = strcat(path_image, file_name);
     f_info = dicominfo(f);
-    Im = dicomread(f_info);
+    Im = vtseg.read_dicom_image(f_info);
     display_image = Im(display_crop.rows, display_crop.columns);
     [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
 
@@ -1115,7 +1115,11 @@ for k = 1:n_slices
     labels{k} = {sprintf('Mask %d', k), folder(k).name};
 end
 
-manifest_path = fullfile(seg_path, 'bivme_export_manifest.json');
+manifest_path = fullfile(seg_path, 'vtseg_export_manifest.json');
+if ~isfile(manifest_path)
+    % Compatibility with MATLAB exports produced before the generic manifest.
+    manifest_path = fullfile(seg_path, 'bivme_export_manifest.json');
+end
 if ~isfile(manifest_path)
     return;
 end
@@ -1313,5 +1317,5 @@ end
 function Im = read_slice_image(path_image, file_name)
     f = strcat(path_image, file_name);
     f_info = dicominfo(f);
-    Im = dicomread(f_info);
+    Im = vtseg.read_dicom_image(f_info);
 end

@@ -28,6 +28,18 @@ def _cine_case(tmp_path, frame=0):
     return case
 
 
+def _ct_mpr_case(tmp_path):
+    case = tmp_path / "ct-mpr"
+    _write(case / "volume" / "image.nii.gz")
+    (case / "source").mkdir(parents=True)
+    (case / "source" / "selected_series.json").write_text(
+        json.dumps({"series_characterization": {"modality": "CT"}}), encoding="utf-8"
+    )
+    _write(case / "segmentation" / "totalsegmentator" / "normalized" / "combined_labels.nii.gz", labels=True)
+    _write(case / "segmentation" / "native_ct_mapped" / "normalized" / "combined_labels.nii.gz", labels=True)
+    return case
+
+
 def _add_lge_stage(case, mesh_frame=13):
     _write(case / "references" / f"cine_phase_{mesh_frame:03}" / "volume" / "image.nii.gz")
     _write(case / "registration" / "bivme_to_lge" / "metric_masks" / "cine" / "combined_labels.nii.gz", labels=True)
@@ -50,6 +62,14 @@ def test_collect_review_gathers_the_cine_pair_alone(tmp_path):
     assert {skipped["id"] for skipped in manifest["skipped_pairs"]} == {"2_cine_lge_phase", "3_lge"}
     assert (case / "review" / "1_cine_fit" / f"1_{case.name}_cine_fit_image.nii.gz").is_file()
     assert (case / "review" / "1_cine_fit" / f"1_{case.name}_cine_fit_labels.nii.gz").is_file()
+
+
+def test_collect_review_gathers_two_ct_candidates_on_the_same_mpr(tmp_path):
+    case = _ct_mpr_case(tmp_path)
+    manifest = collect_review(case)
+    assert [pair["id"] for pair in manifest["pairs"]] == ["1_direct_mpr", "2_native_ct_mapped"]
+    assert manifest["pairs"][0]["source_image"] == manifest["pairs"][1]["source_image"]
+    assert manifest["skipped_pairs"] == []
 
 
 def test_collect_review_gathers_all_three_pairs_with_frames(tmp_path):

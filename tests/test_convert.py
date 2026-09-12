@@ -1,8 +1,11 @@
 import nibabel as nib
 import numpy as np
+import pydicom
+import pytest
 
 from vtseg.dicom.convert import prepare_series
 from vtseg.dicom.series import scan_headers
+from vtseg.errors import GeometryError
 
 
 def test_prepare_series_retains_all_spatial_slices_and_geometry(tmp_path, dicom_writer):
@@ -39,3 +42,20 @@ def test_prepare_cine_selects_requested_trigger_frame(tmp_path, dicom_writer):
     provenance = prepare_series(scan_headers(source), series, case, frame=1)
     assert provenance["source_dicom_count"] == 2
     assert provenance["selected_temporal_frame"]["temporal_value"] == 20.0
+
+
+def test_prepare_ct_rejects_in_plane_slice_drift(tmp_path, dicom_writer):
+    source = tmp_path / "ct-dicom"
+    study = "1.2.826.0.1.3680043.10.3002.1"
+    series = "1.2.826.0.1.3680043.10.3002.2"
+    for index, z in enumerate((0.0, 4.0, 8.0), start=1):
+        path = dicom_writer(
+            source / f"ct_{index}.dcm", study_uid=study, series_uid=series,
+            z=z, instance=index, modality="CT",
+        )
+        if index == 2:
+            dataset = pydicom.dcmread(str(path))
+            dataset.ImagePositionPatient = [10.3, 20.0, z]
+            dataset.save_as(path, enforce_file_format=True)
+    with pytest.raises(GeometryError, match="irregular 3-D slice positions"):
+        prepare_series(scan_headers(source), series, tmp_path / "case")

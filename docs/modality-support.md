@@ -24,3 +24,11 @@ prepare a native LGE/MDE target from the same study, phase-match a fitted cine
 mesh, rigidly register cine to fixed LGE, and rasterize transformed masks on the
 LGE grid. This does not make biv-me an LGE segmentation model and does not
 identify scar.
+
+For CT manual meshing, the supported route prepares both a native full cardiac
+CT series and a complete short-axis DICOM MPR. TotalSegmentator runs on both.
+Native canonical masks are mapped to the MPR grid only when Study Instance UID
+and Frame of Reference UID match; `collect-review` presents the two MPR-space
+candidates in 3D Slicer. The reviewer promotes one result before CT MATLAB
+export, correction, and mesh generation. This route does not include CT scar
+or fat segmentation.

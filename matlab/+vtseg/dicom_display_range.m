@@ -6,8 +6,8 @@ info = dicominfo(dicom_path);
 if ~isfield(info, 'WindowCenter') || ~isfield(info, 'WindowWidth')
     return;
 end
-center = double(info.WindowCenter(1));
-width = double(info.WindowWidth(1));
+center = vtseg.dicom_numeric_value(info, 'WindowCenter', NaN);
+width = vtseg.dicom_numeric_value(info, 'WindowWidth', NaN);
 if isfinite(center) && isfinite(width) && width > 0
     gs_range = [center - width / 2, center + width / 2];
 end

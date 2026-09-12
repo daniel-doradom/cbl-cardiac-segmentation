@@ -4,6 +4,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
+from vtseg.errors import NormalizationError
 from vtseg.segmentation.matlab_import import import_matlab_case
 
 
@@ -60,8 +61,9 @@ def test_import_reads_generic_ct_manifest_and_preserves_ct_provenance(tmp_path):
     seg.mkdir(parents=True)
     for name in ("Lendo", "Rendo", "Epi"):
         values = np.zeros((4, 4, 2), dtype=np.uint8)
-        values[1, 1, :] = 1 if name != "Rendo" else 0
-        if name == "Rendo":
+        if name != "Rendo":
+            values[1, 1, :] = 1
+        if name != "Lendo":
             values[2, 1, :] = 1
         scipy.savemat(seg / f"{name}.mat", {name: values})
     (seg / "vtseg_export_manifest.json").write_text(json.dumps({"modality": "CT", "slices": [
@@ -71,3 +73,52 @@ def test_import_reads_generic_ct_manifest_and_preserves_ct_provenance(tmp_path):
     import_matlab_case(seg.parent, reference, output)
     provenance = json.loads((output.parent / "provenance.json").read_text(encoding="utf-8"))
     assert provenance["modality"] == "CT"
+
+
+def test_import_rejects_ct_manifest_from_another_series_before_writing(tmp_path):
+    reference = tmp_path / "reference"
+    (reference / "volume").mkdir(parents=True)
+    (reference / "source").mkdir()
+    nib.save(nib.Nifti1Image(np.zeros((4, 4, 2), dtype=np.uint8), np.eye(4)),
+             reference / "volume" / "image.nii.gz")
+    (reference / "source" / "selected_series.json").write_text(json.dumps({
+        "study_uid": "ct-study", "series_uid": "series-A",
+        "series_characterization": {"modality": "CT"},
+    }), encoding="utf-8")
+    seg = tmp_path / "matlab" / "seg"
+    seg.mkdir(parents=True)
+    (seg / "vtseg_export_manifest.json").write_text(json.dumps({
+        "modality": "CT", "series_uid": "series-B", "slices": [{"reference_volume_index": 0}],
+    }), encoding="utf-8")
+    output = tmp_path / "manual" / "normalized"
+    with pytest.raises(NormalizationError, match="series UID"):
+        import_matlab_case(seg.parent, reference, output)
+    assert not output.exists()
+
+
+def test_import_rejects_invalid_ct_cavities_before_writing(tmp_path):
+    scipy = pytest.importorskip("scipy.io")
+    reference = tmp_path / "reference"
+    (reference / "volume").mkdir(parents=True)
+    (reference / "source").mkdir()
+    nib.save(nib.Nifti1Image(np.zeros((3, 3, 2), dtype=np.uint8), np.eye(4)),
+             reference / "volume" / "image.nii.gz")
+    (reference / "source" / "selected_series.json").write_text(json.dumps({
+        "study_uid": "ct-study", "series_uid": "ct-series",
+        "series_characterization": {"modality": "CT"},
+    }), encoding="utf-8")
+    seg = tmp_path / "matlab" / "seg"
+    seg.mkdir(parents=True)
+    for name in ("Lendo", "Rendo", "Epi"):
+        values = np.zeros((3, 3, 2), dtype=np.uint8)
+        if name != "Epi":
+            values[1, 1, :] = 1
+        scipy.savemat(seg / f"{name}.mat", {name: values})
+    (seg / "vtseg_export_manifest.json").write_text(json.dumps({
+        "modality": "CT", "series_uid": "ct-series",
+        "slices": [{"reference_volume_index": 0}, {"reference_volume_index": 1}],
+    }), encoding="utf-8")
+    output = tmp_path / "manual" / "normalized"
+    with pytest.raises(NormalizationError, match="overlap"):
+        import_matlab_case(seg.parent, reference, output)
+    assert not output.exists()

@@ -82,6 +82,9 @@ def prepare_series(
     }
     if len(frame_of_reference_uids) > 1:
         raise GeometryError("selected frame has inconsistent FrameOfReferenceUID values")
+    if str(getattr(selected_datasets[0], "Modality", "")) == "CT" and frame_of_reference_uids:
+        if any(not str(getattr(dataset, "FrameOfReferenceUID", "")) for dataset in selected_datasets):
+            raise GeometryError("selected CT frame mixes present and missing FrameOfReferenceUID values")
 
     path_by_id = {id(record.dataset): record.path for record in records}
     selected_datasets = spatial_order(selected_datasets)
@@ -99,6 +102,13 @@ def prepare_series(
         deltas = np.diff(coordinates)
         if not np.allclose(deltas, np.median(deltas), atol=1e-2, rtol=1e-3):
             raise GeometryError("selected frame has irregular slice spacing")
+        if str(getattr(selected_datasets[0], "Modality", "")) == "CT":
+            positions = np.asarray([ds.ImagePositionPatient for ds in selected_datasets], dtype=float)
+            steps = np.diff(positions, axis=0)
+            expected_step = np.median(steps, axis=0)
+            residual_mm = np.linalg.norm(steps - expected_step, axis=1)
+            if np.any(residual_mm > 0.05):
+                raise GeometryError("CT stack has irregular 3-D slice positions; one affine cannot represent it")
 
     arrays = [_load_pixels(path) for path in selected_paths]
     volume = np.stack(arrays, axis=2)

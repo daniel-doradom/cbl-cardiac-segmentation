@@ -54,6 +54,13 @@ def _pair_specs(case: Path) -> list[dict[str, Any]]:
     selection = _read_json(case / "source" / "selected_series.json")
     if selection.get("series_characterization", {}).get("modality") == "CT":
         image = case / "volume" / SOURCE_IMAGE_NAME
+        selected = case / "segmentation" / "selected"
+        if (selected / "selection.json").is_file():
+            return [{
+                "id": "1_selected_ct", "space": "ct_short_axis_mpr", "frame": None,
+                "description": "Slicer-selected CT masks on the promoted short-axis MPR",
+                "image": image, "labels": selected / "normalized" / SOURCE_LABELS_NAME,
+            }]
         return [
             {
                 "id": "1_direct_mpr", "space": "ct_short_axis_mpr", "frame": None,

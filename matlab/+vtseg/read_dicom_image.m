@@ -8,13 +8,7 @@ else
     info = path_or_info;
     pixels = dicomread(info);
 end
-slope = 1;
-intercept = 0;
-if isfield(info, 'RescaleSlope') && ~isempty(info.RescaleSlope)
-    slope = double(info.RescaleSlope);
-end
-if isfield(info, 'RescaleIntercept') && ~isempty(info.RescaleIntercept)
-    intercept = double(info.RescaleIntercept);
-end
+slope = vtseg.dicom_numeric_value(info, 'RescaleSlope', 1);
+intercept = vtseg.dicom_numeric_value(info, 'RescaleIntercept', 0);
 image = double(pixels) .* slope + intercept;
 end

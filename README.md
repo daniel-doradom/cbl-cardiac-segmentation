@@ -8,7 +8,9 @@ from the legacy MATLAB project and does not modify source DICOM data.
 Milestone 1 provides structured DICOM inspection, explicit series/frame
 selection, full-volume DICOM-to-NIfTI preparation, modality routing, a CT
 TotalSegmentator adapter, an experimental cine-CMR biv-me adapter, canonical
-masks, automated mask QC, provenance, and 3D Slicer-ready files.
+masks, automated mask QC, provenance, and 3D Slicer-ready files. The maintained
+MATLAB workflow reviews/corrects imported masks and generates biventricular
+meshes for approved MRI and short-axis CT cases.
 
 For the complete repeatable operator procedure, including authorized data
 placement, server inference, Slicer review, MATLAB correction/meshing, and
@@ -36,14 +38,16 @@ heart_ventricle_right -> rv_blood_pool
 heart_myocardium      -> myocardium
 ```
 
-These volumetric masks are not the legacy endocardial/epicardial surfaces.
-Surface derivation needs a separate algorithm and validation milestone.
+These volumetric masks are the inputs to the maintained MATLAB surface and
+tetrahedral mesh workflow. Mesh quality still requires visual review.
 
 ## Modality status
 
 - **CT:** TotalSegmentator `heartchambers_highres` is the first backend under
   evaluation. It is a licensed task (free academic/non-commercial licensing is
-  available upstream). The pipeline never falls back to another task.
+  available upstream). Native CT and a matching short-axis MPR can be compared
+  on the MPR grid in Slicer; a reviewer explicitly promotes one candidate for
+  MATLAB correction and meshing. See [the CT backend guide](docs/ct-backend.md).
 - **MRI:** biv-me is available as an experimental backend for multi-view cine
   CMR DICOM only. It is not valid for CT and does not segment scar in static
   MDE/LGE. A separate rigid alignment stage can transfer fitted cine geometry
@@ -55,8 +59,8 @@ Surface derivation needs a separate algorithm and validation milestone.
 
 ## Setup
 
-Use Python 3.11 or 3.12 for the CT environment; this avoids current deep-learning
-wheel gaps in newer interpreters.
+Python 3.11/3.12 is a conservative choice for a fresh CT environment. The lab
+server's `vtseg-ct` environment uses Python 3.13.5 and passes backend discovery.
 
 ```bash
 python3.12 -m venv .venv
@@ -118,6 +122,13 @@ python -m vtseg segment-ct results/local-case --device gpu
 python -m vtseg segment-ct results/local-case --device gpu --force-split
 ```
 
+For the complete CT route, prepare both the native cardiac CT and the matching
+short-axis DICOM MPR in separate `results/legacy/` cases. Run TotalSegmentator
+on each, map the native masks with `map-ct-masks-to-mpr`, inspect both pairs from
+`collect-review`, then use `promote-ct-candidate` to create a MATLAB-ready
+`results/best/` case. The exact commands and slice-selection instructions are
+in [the manual workflow runbook](docs/manual-workflow.md#ct-to-matlab-workflow).
+
 Run the separately installed biv-me backend on a prepared cine-CMR case:
 
 ```bash
@@ -153,7 +164,7 @@ the adapter does not copy DICOM pixels into this repository.
 `export-matlab-seg` writes an ignored MATLAB case with DICOM files in `raw/`
 and matching `Lendo.mat`, `Rendo.mat`, `Epi.mat`, and `myocardium.mat` stacks
 in `seg/`. The required `--slicer-approved` flag confirms that the matching
-LGE image and masks passed visual review and records that acknowledgment in
+image and masks passed visual review and records that acknowledgment in
 the export manifest and provenance. It orders the stack base-to-apex from the
 mask extent. `--start-slice`
 and `--end-slice` are one-based positions in that order; `--slices` retains
@@ -336,11 +347,9 @@ validation activities.
 
 ## Current non-goals
 
-Milestone 1 does not implement surface generation, epicardial/endocardial
-surface derivation, mesh repair, remeshing, tetrahedralization, scar replacement,
-CT fat segmentation, legacy mesh export, node-intensity mapping, or downstream
-VT/ECGI analysis. It does not claim that `Gen_mesh`, `iso2meshEP`, `corLoc2Gol`,
-or other legacy stages can be removed.
+The pipeline does not automate CT scar/fat segmentation or downstream VT/ECGI
+analysis. The MATLAB `Gen_mesh`, `iso2meshEP`, and `corLoc2Gol` stages are still
+required for manual mesh generation; this repository has not replaced them.
 
 See [docs/pipeline.md](docs/pipeline.md),
 [docs/legacy-pipeline.md](docs/legacy-pipeline.md), and

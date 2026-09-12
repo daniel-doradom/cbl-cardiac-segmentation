@@ -38,6 +38,37 @@ def _validate_shared_frame(native: dict[str, Any], mpr: dict[str, Any]) -> None:
         raise GeometryError("native CT and MPR StudyInstanceUID values differ; refusing to register")
 
 
+def _validated_labels(image_path: Path, normalized: Path) -> np.ndarray:
+    """Check the full canonical contract before mapping or promotion."""
+    image = nib.load(str(image_path))
+    combined = np.zeros(image.shape, dtype=np.uint8)
+    for label, name in enumerate(CANONICAL_MASKS, start=1):
+        mask_path = normalized / f"{name}.nii.gz"
+        if not mask_path.is_file():
+            raise NormalizationError(f"missing canonical CT mask: {mask_path}")
+        mask = nib.load(str(mask_path))
+        if mask.shape != image.shape or not np.allclose(mask.affine, image.affine, atol=1e-4):
+            raise GeometryError(f"canonical CT mask does not share prepared image geometry: {name}")
+        values = np.asanyarray(mask.dataobj)
+        if not np.all((values == 0) | (values == 1)):
+            raise NormalizationError(f"canonical CT mask must be binary: {name}")
+        occupied = values == 1
+        if np.any(combined[occupied]):
+            raise NormalizationError(f"canonical CT masks overlap at {name}")
+        combined[occupied] = label
+    combined_path = normalized / "combined_labels.nii.gz"
+    if not combined_path.is_file():
+        raise NormalizationError(f"missing canonical CT label map: {combined_path}")
+    label_image = nib.load(str(combined_path))
+    if label_image.shape != image.shape or not np.allclose(label_image.affine, image.affine, atol=1e-4):
+        raise GeometryError("combined CT labels do not share prepared image geometry")
+    if label_image.get_data_dtype() != np.dtype("uint8"):
+        raise NormalizationError("combined CT labels must be uint8")
+    if not np.array_equal(np.asanyarray(label_image.dataobj), combined):
+        raise NormalizationError("combined CT labels disagree with the three individual masks")
+    return combined
+
+
 def map_native_ct_masks_to_mpr(
     native_case_directory: str | Path,
     mpr_case_directory: str | Path,
@@ -67,16 +98,13 @@ def map_native_ct_masks_to_mpr(
 
     native_image = nib.load(str(native_image_path))
     target_image = nib.load(str(target_image_path))
+    native_labels = _validated_labels(native_image_path, source_masks)
+    source = nib.Nifti1Image(native_labels, native_image.affine)
+    mapped = resample_from_to(source, (target_image.shape, target_image.affine), order=0)
+    mapped_labels = np.asarray(mapped.dataobj, dtype=np.uint8)
     destination.mkdir(parents=True)
-    for name in CANONICAL_MASKS:
-        source_path = source_masks / f"{name}.nii.gz"
-        if not source_path.is_file():
-            raise NormalizationError(f"native CT result lacks canonical mask: {source_path}")
-        source = nib.load(str(source_path))
-        if source.shape != native_image.shape or not np.allclose(source.affine, native_image.affine, atol=1e-4):
-            raise GeometryError(f"native canonical mask does not share native CT geometry: {name}")
-        mapped = resample_from_to(source, (target_image.shape, target_image.affine), order=0)
-        values = np.asarray(mapped.dataobj) > 0
+    for label, name in enumerate(CANONICAL_MASKS, start=1):
+        values = mapped_labels == label
         output = nib.Nifti1Image(values.astype(np.uint8), target_image.affine, target_image.header.copy())
         output.set_data_dtype(np.uint8)
         output.set_qform(target_image.affine, code=1)
@@ -129,8 +157,7 @@ def promote_ct_candidate(
         raise NormalizationError("candidate must be 'direct-mpr' or 'native-mapped'")
     source = choices[candidate]
     required = [source / f"{name}.nii.gz" for name in (*CANONICAL_MASKS, "combined_labels")]
-    if not all(path.is_file() for path in required):
-        raise NormalizationError(f"selected CT candidate is incomplete: {source}")
+    _validated_labels(mpr_case / "volume" / "image.nii.gz", source)
     output.mkdir(parents=True)
     shutil.copytree(mpr_case / "source", output / "source")
     shutil.copytree(mpr_case / "volume", output / "volume")

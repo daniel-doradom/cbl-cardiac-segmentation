@@ -540,10 +540,13 @@ PYTHONPATH=src python -m vtseg prepare-series "$nativeStudy" --series "$nativeSe
 PYTHONPATH=src python -m vtseg prepare-series "$mprStudy" --series "$mprSeriesUid" --output "$mprCase"
 PYTHONPATH=src python -m vtseg check-ct-backend
 PYTHONPATH=src python -m vtseg segment-ct "$nativeCase" --device gpu --force-split
-PYTHONPATH=src python -m vtseg segment-ct "$mprCase" --device gpu --force-split
+PYTHONPATH=src python -m vtseg segment-ct "$mprCase" --device gpu
 PYTHONPATH=src python -m vtseg map-ct-masks-to-mpr "$nativeCase" "$mprCase"
 PYTHONPATH=src python -m vtseg collect-review "$mprCase"
 ```
+
+`check-ct-backend` confirms that the command and task are discoverable; license,
+weights, GPU access, and actual inference are checked by `segment-ct` itself.
 
 One-line equivalents:
 
@@ -553,7 +556,7 @@ PYTHONPATH=src python -m vtseg inspect-dicom "$mprStudy" --json "$mprCase/source
 PYTHONPATH=src python -m vtseg prepare-series "$nativeStudy" --series "$nativeSeriesUid" --output "$nativeCase"
 PYTHONPATH=src python -m vtseg prepare-series "$mprStudy" --series "$mprSeriesUid" --output "$mprCase"
 PYTHONPATH=src python -m vtseg segment-ct "$nativeCase" --device gpu --force-split
-PYTHONPATH=src python -m vtseg segment-ct "$mprCase" --device gpu --force-split
+PYTHONPATH=src python -m vtseg segment-ct "$mprCase" --device gpu
 PYTHONPATH=src python -m vtseg map-ct-masks-to-mpr "$nativeCase" "$mprCase"
 PYTHONPATH=src python -m vtseg collect-review "$mprCase"
 ```
@@ -572,6 +575,8 @@ manual work:
 ```bash
 bestCase='results/best/nsha04-ct'
 PYTHONPATH=src python -m vtseg promote-ct-candidate "$mprCase" --candidate direct-mpr --output "$bestCase"
+PYTHONPATH=src python -m vtseg collect-review "$bestCase"
+PYTHONPATH=src python -m vtseg preview-matlab-slices "$bestCase/segmentation/selected/normalized" --reference "$bestCase"
 PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/selected/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
 ```
 
@@ -579,15 +584,26 @@ One-line equivalents:
 
 ```bash
 PYTHONPATH=src python -m vtseg promote-ct-candidate "$mprCase" --candidate direct-mpr --output "$bestCase"
+PYTHONPATH=src python -m vtseg collect-review "$bestCase"
+PYTHONPATH=src python -m vtseg preview-matlab-slices "$bestCase/segmentation/selected/normalized" --reference "$bestCase"
 PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/selected/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
 ```
 
-Use `--candidate native-mapped` when that is the Slicer-approved result. CT
-exports contain `raw/` short-axis CT DICOMs, `seg/Lendo.mat`, `Rendo.mat`,
+Use `--candidate native-mapped` when that is the Slicer-approved result. Run
+`collect-review` on the promoted case to create its `review/1_selected_ct/` pair.
+`preview-matlab-slices` shows the one-based base-to-apex positions accepted by
+`--start-slice` and `--end-slice`, alongside zero-based NIfTI reference indices.
+Select the intended range from that listing, then visually confirm the two
+exported endpoints; intermediate slices are evenly spaced.
+
+CT exports contain `raw/` short-axis CT DICOMs, `seg/Lendo.mat`, `Rendo.mat`,
 `Epi.mat`, `myocardium.mat`, and `seg/vtseg_export_manifest.json`. They retain
 the source DICOM filename/position mapping. On the workstation run:
 
 ```matlab
+repoRoot = '/path/to/vt-segmentation-eval';
+addpath(fullfile(repoRoot, 'matlab'));
+setup_vtseg();
 caseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...
     'manual', 'matlab-source-START-END-COUNTslices');
 vtseg.main_ct_tetmesh(caseDirectory, []);
@@ -596,5 +612,6 @@ vtseg.main_ct_tetmesh(caseDirectory, []);
 The CT MATLAB entry point applies DICOM rescale slope/intercept so the review
 image is in Hounsfield units. When CT Window Center/Width is present, it is the
 initial display range; its existing window/level, crop, contour, edit, compare,
-mesh, and VTK controls remain available. CT scar/fat analysis is not part of
+mesh, and VTK controls remain available. Exported CT mesh node intensities
+also use HU. CT scar/fat analysis is not part of
 this workflow.

@@ -57,11 +57,30 @@ def import_matlab_case(
     slices = manifest.get("slices")
     if not isinstance(slices, list) or not slices:
         raise NormalizationError("MATLAB export manifest has no slice mapping")
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    modality = selection.get("series_characterization", {}).get("modality")
+    if modality is None and manifest_path.name == "bivme_export_manifest.json":
+        modality = "MR"
+    if modality not in {"CT", "MR"}:
+        raise NormalizationError(f"reference modality is not supported for MATLAB import: {modality!r}")
+    if manifest.get("series_uid") is not None and manifest["series_uid"] != selection.get("series_uid"):
+        raise NormalizationError("MATLAB export manifest series UID does not match the reference")
+    if manifest.get("modality") is not None and manifest["modality"] != modality:
+        raise NormalizationError("MATLAB export manifest modality does not match the reference")
     image = nib.load(str(image_path))
+    indices = [entry.get("reference_volume_index") for entry in slices]
+    if any(not isinstance(index, int) or not 0 <= index < image.shape[2] for index in indices):
+        raise NormalizationError("MATLAB export manifest has an invalid reference_volume_index")
+    if len(indices) != len(set(indices)):
+        raise NormalizationError("MATLAB export manifest repeats a reference_volume_index")
     stack_shape = (int(image.shape[0]), int(image.shape[1]), len(slices))
     lv_stack = _stack(seg / "Lendo.mat", "Lendo", stack_shape)
     rv_stack = _stack(seg / "Rendo.mat", "Rendo", stack_shape)
     epi_stack = _stack(seg / "Epi.mat", "Epi", stack_shape)
+    if np.any(lv_stack & rv_stack):
+        raise NormalizationError("corrected MATLAB LV and RV masks overlap")
+    if np.any((lv_stack | rv_stack) & ~epi_stack):
+        raise NormalizationError("corrected MATLAB cavities extend outside Epi")
     myocardium_stack = epi_stack & ~lv_stack & ~rv_stack
 
     volumes = {name: np.zeros(image.shape, dtype=bool) for name in CANONICAL_MASKS}
@@ -85,14 +104,6 @@ def import_matlab_case(
     manual_root = output.parent
     qc_path = manual_root / "qc" / "mask_qc.json"
     qc = run_backend_qc(reference, normalized_directory=output, report_path=qc_path)
-    selection = json.loads(selection_path.read_text(encoding="utf-8"))
-    modality = selection.get("series_characterization", {}).get("modality")
-    # Old exports did not carry modality in their minimal selected-series data.
-    # They were biv-me MRI exports, so preserve their read compatibility.
-    if modality is None and manifest_path.name == "bivme_export_manifest.json":
-        modality = "MR"
-    if modality not in {"CT", "MR"}:
-        raise NormalizationError(f"reference modality is not supported for MATLAB import: {modality!r}")
     provenance = base_provenance(
         git_commit=git_commit(repo_root) if repo_root else None,
         input_study_uid=selection["study_uid"],

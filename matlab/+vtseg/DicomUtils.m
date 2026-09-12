@@ -47,7 +47,7 @@ classdef DicomUtils
 
                 try
                     info = dicominfo(path);
-                    img = dicomread(info);
+                    img = vtseg.read_dicom_image(info);
                     if isempty(img) || any(size(img) == 0)
                         warning('DicomUtils:EmptyImage', ...
                             '>> Skipping empty DICOM image: %s', path);

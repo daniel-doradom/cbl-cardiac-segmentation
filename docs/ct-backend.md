@@ -7,7 +7,8 @@ ventricles, aorta, and pulmonary artery. This repository requires three of them.
 
 ## Preflight and setup
 
-Use a Python 3.11/3.12 environment with the optional `ct` dependencies. Then:
+Use a compatible Python environment with the optional `ct` dependencies. The
+lab server's `vtseg-ct` environment currently uses Python 3.13.5. Then:
 
 ```bash
 totalseg_info --classes -ta heartchambers_highres
@@ -58,11 +59,11 @@ creates the two Slicer-ready comparisons. Promote only the reviewer-selected
 candidate with `vtseg promote-ct-candidate`; see the manual workflow runbook
 for the complete commands and MATLAB export.
 
-## Current machine boundary at repository creation
+## Validation boundary
 
-The host has Python 3.14.4, no installed TotalSegmentator or PyTorch package,
-and an NVIDIA GeForce RTX 4060 Laptop GPU visible on PCIe. `nvidia-smi` cannot
-communicate with the NVIDIA driver, so CUDA is not currently usable from this
-environment. The 2.18.0 wheel and pure task registry were inspected separately:
-task discovery and the required label map are verified, but model inference is
-not claimed.
+The server's `vtseg-ct` environment currently discovers TotalSegmentator 2.18.0
+and the required cardiac classes. `check-ct-backend` checks discovery only; it
+does not prove that a license, weights, GPU allocation, or a patient-case
+inference run is ready. The NSHA04 native CT series has been checked for regular
+3-D positions and a consistent Frame of Reference UID. A complete short-axis
+MPR DICOM series is still needed for the CT comparison acceptance run.

@@ -526,7 +526,8 @@ short-axis MPR stored at `data/derived/ct-mpr/nsha04-cardiac-sa/`. First run
 regular CT series UIDs from their inventories.
 
 ```bash
-conda activate vtseg-ct
+conda activate vtseg-ct121
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 nativeStudy='data/diagnostics/NSHA4/Diagnostics/ECGi-VT- 01-04- Cardiac CT- 28 SEP 2021/DICOM'
 mprStudy='data/derived/ct-mpr/nsha04-cardiac-sa'
 nativeCase='results/legacy/nsha04-ct-native-v1'

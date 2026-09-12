@@ -2,6 +2,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
+from vtseg.qc import masks as mask_qc
 from vtseg.qc.masks import evaluate_masks, mask_statistics, run_backend_qc, run_case_qc
 
 
@@ -23,6 +24,18 @@ def test_components_volume_border_and_bbox():
     assert stats["mask_physical_volume_ml"] == pytest.approx(0.072)
     assert stats["touches_image_border"]
     assert stats["bounding_box_voxels_inclusive"] == {"min": [1, 1, 1], "max": [4, 4, 4]}
+
+
+def test_large_volume_skips_unsafe_topology_labeling(monkeypatch):
+    monkeypatch.setattr(mask_qc, "MAX_TOPOLOGY_QC_VOXELS", 1)
+    mask = np.zeros((2, 2, 2), dtype=np.uint8)
+    mask[0, 0, 0] = 1
+    stats = mask_statistics(mask, np.eye(4))
+    assert not stats["topology_evaluated"]
+    assert stats["connected_components"] is None
+    assert stats["largest_component_voxels"] is None
+    assert stats["mask_voxel_count"] == 1
+    assert stats["touches_image_border"]
 
 
 def save(path, data, affine=None):

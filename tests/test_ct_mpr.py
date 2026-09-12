@@ -16,14 +16,14 @@ from vtseg.segmentation.matlab_import import import_matlab_case
 from vtseg.segmentation.normalize import CANONICAL_MASKS, write_combined_labels
 
 
-def _case(root, name, shape=(6, 6, 4), affine=None, frame="for-1"):
+def _case(root, name, shape=(6, 6, 4), affine=None, frame="for-1", study="study-1"):
     case = root / name
     affine = np.eye(4) if affine is None else affine
     case.joinpath("volume").mkdir(parents=True)
     nib.save(nib.Nifti1Image(np.zeros(shape, dtype=np.int16), affine), str(case / "volume" / "image.nii.gz"))
     case.joinpath("source").mkdir()
     (case / "source" / "selected_series.json").write_text(json.dumps({
-        "study_uid": "study-1", "series_uid": name, "selected_temporal_frame": None,
+        "study_uid": study, "series_uid": name, "selected_temporal_frame": None,
         "selected_instance_count": shape[2], "selected_instance_paths": [f"{index}.dcm" for index in range(shape[2])],
         "frame_of_reference_uid": frame, "series_characterization": {"modality": "CT"},
     }), encoding="utf-8")
@@ -63,6 +63,14 @@ def test_mapping_rejects_frame_of_reference_mismatch(tmp_path):
     mpr = _case(tmp_path, "mpr", frame="mpr-frame")
     with pytest.raises(GeometryError, match="FrameOfReferenceUID"):
         map_native_ct_masks_to_mpr(native, mpr)
+
+
+def test_mapping_accepts_weasis_derived_mpr_with_new_study_uid(tmp_path):
+    native = _case(tmp_path, "native", study="native-study")
+    _native_masks(native)
+    mpr = _case(tmp_path, "mpr", study="weasis-derived-study")
+    provenance = map_native_ct_masks_to_mpr(native, mpr)
+    assert any("StudyInstanceUID differs" in warning for warning in provenance["warnings"])
 
 
 def test_promotion_copies_only_selected_candidate_masks(tmp_path):

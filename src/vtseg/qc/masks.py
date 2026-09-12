@@ -13,33 +13,46 @@ from vtseg.dicom.geometry import geometry_compatible
 from vtseg.provenance import write_json
 from vtseg.segmentation.normalize import CANONICAL_MASKS
 
+# Connected-component labeling needs an integer work array several times the
+# size of the source image. Avoid an out-of-memory failure on dense MPR grids;
+# those masks still receive geometry, volume, and border checks.
+MAX_TOPOLOGY_QC_VOXELS = 128_000_000
+
 
 def mask_statistics(data: np.ndarray, affine: np.ndarray) -> dict[str, Any]:
-    binary = np.asarray(data) > 0
-    voxel_count = int(np.count_nonzero(binary))
+    values = np.asanyarray(data)
+    voxel_count = int(np.count_nonzero(values))
     voxel_volume_mm3 = float(abs(np.linalg.det(np.asarray(affine)[:3, :3])))
-    structure = ndimage.generate_binary_structure(binary.ndim, 1)
-    labels, component_count = ndimage.label(binary, structure=structure)
-    if component_count:
-        sizes = np.bincount(labels.ravel())[1:]
-        largest = int(sizes.max())
-        largest_fraction = float(largest / voxel_count)
-        indices = np.argwhere(binary)
-        bounding_box = {
-            "min": indices.min(axis=0).astype(int).tolist(),
-            "max": indices.max(axis=0).astype(int).tolist(),
-        }
+    topology_evaluated = values.size <= MAX_TOPOLOGY_QC_VOXELS
+    if topology_evaluated:
+        binary = values > 0
+        structure = ndimage.generate_binary_structure(binary.ndim, 1)
+        labels, component_count = ndimage.label(binary, structure=structure)
+        if component_count:
+            sizes = np.bincount(labels.ravel())[1:]
+            largest = int(sizes.max())
+            largest_fraction = float(largest / voxel_count)
+            indices = np.argwhere(binary)
+            bounding_box = {
+                "min": indices.min(axis=0).astype(int).tolist(),
+                "max": indices.max(axis=0).astype(int).tolist(),
+            }
+        else:
+            largest = 0
+            largest_fraction = 0.0
+            bounding_box = None
     else:
-        largest = 0
-        largest_fraction = 0.0
+        component_count = None
+        largest = None
+        largest_fraction = None
         bounding_box = None
 
     touches_border = False
     touched_faces: list[str] = []
     if voxel_count:
-        for axis in range(binary.ndim):
-            low = np.take(binary, 0, axis=axis)
-            high = np.take(binary, binary.shape[axis] - 1, axis=axis)
+        for axis in range(values.ndim):
+            low = np.take(values, 0, axis=axis)
+            high = np.take(values, values.shape[axis] - 1, axis=axis)
             if np.any(low):
                 touches_border = True
                 touched_faces.append(f"axis_{axis}_min")
@@ -47,14 +60,15 @@ def mask_statistics(data: np.ndarray, affine: np.ndarray) -> dict[str, Any]:
                 touches_border = True
                 touched_faces.append(f"axis_{axis}_max")
     return {
-        "array_dimensions": list(binary.shape),
+        "array_dimensions": list(values.shape),
         "voxel_spacing_mm": [float(np.linalg.norm(np.asarray(affine)[:3, i])) for i in range(3)],
         "physical_voxel_volume_mm3": voxel_volume_mm3,
         "mask_voxel_count": voxel_count,
         "mask_physical_volume_ml": float(voxel_count * voxel_volume_mm3 / 1000.0),
-        "connected_components": int(component_count),
+        "connected_components": int(component_count) if component_count is not None else None,
         "largest_component_voxels": largest,
         "largest_component_fraction": largest_fraction,
+        "topology_evaluated": topology_evaluated,
         "empty": voxel_count == 0,
         "touches_image_border": touches_border,
         "touched_border_faces": touched_faces,
@@ -89,6 +103,7 @@ def evaluate_masks(source_path: str | Path, masks: dict[str, str | Path]) -> dic
         "warnings": [],
     }
     arrays: dict[str, np.ndarray] = {}
+    overlap_skipped = False
     for name in CANONICAL_MASKS:
         path = masks.get(name)
         if path is None or not Path(path).is_file():
@@ -96,8 +111,11 @@ def evaluate_masks(source_path: str | Path, masks: dict[str, str | Path]) -> dic
             continue
         image = nib.load(str(path))
         data = np.asanyarray(image.dataobj)
-        arrays[name] = data > 0
         stats = mask_statistics(data, image.affine)
+        if stats["topology_evaluated"]:
+            arrays[name] = data > 0
+        else:
+            overlap_skipped = True
         stats["file"] = str(path)
         stats["geometry_matches_source"] = geometry_compatible(
             source.shape, source.affine, image.shape, image.affine
@@ -108,13 +126,17 @@ def evaluate_masks(source_path: str | Path, masks: dict[str, str | Path]) -> dic
             report["warnings"].append(f"{name} is empty")
         if stats["touches_image_border"]:
             report["warnings"].append(f"{name} touches an image border")
-        if stats["connected_components"] > 1:
+        if stats["connected_components"] is not None and stats["connected_components"] > 1:
             report["warnings"].append(
                 f"{name} has {stats['connected_components']} connected components"
             )
+        if not stats["topology_evaluated"]:
+            report["warnings"].append(
+                f"{name} topology QC skipped because the volume exceeds {MAX_TOPOLOGY_QC_VOXELS} voxels"
+            )
         report["masks"][name] = stats
 
-    if "lv_blood_pool" in arrays and "rv_blood_pool" in arrays:
+    if not overlap_skipped and "lv_blood_pool" in arrays and "rv_blood_pool" in arrays:
         overlap = _overlap(arrays["lv_blood_pool"], arrays["rv_blood_pool"])
         report["cross_mask_checks"]["lv_vs_rv"] = overlap
         if overlap["identical"]:
@@ -124,6 +146,11 @@ def evaluate_masks(source_path: str | Path, masks: dict[str, str | Path]) -> dic
             report["warnings"].append(
                 "LV/RV overlap covers at least 95% of the smaller mask; review required"
             )
+    elif overlap_skipped:
+        report["cross_mask_checks"]["lv_vs_rv"] = {
+            "evaluated": False,
+            "reason": f"volume exceeds {MAX_TOPOLOGY_QC_VOXELS} voxels",
+        }
 
     present = list(report["masks"].values())
     report["cross_mask_checks"]["all_present_dimensions_identical"] = len(

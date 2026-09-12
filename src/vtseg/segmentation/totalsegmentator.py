@@ -119,7 +119,19 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             raise BackendUnavailable(status.detail)
 
         normalized_dir = backend_dir / "normalized"
+        canonical_existing = {
+            "lv_blood_pool": normalized_dir / "lv_blood_pool.nii.gz",
+            "rv_blood_pool": normalized_dir / "rv_blood_pool.nii.gz",
+            "myocardium": normalized_dir / "myocardium.nii.gz",
+            "combined_labels": normalized_dir / "combined_labels.nii.gz",
+        }
         if any(normalized_dir.glob("*.nii.gz")):
+            if all(path.is_file() for path in canonical_existing.values()) and not metadata_path.exists():
+                return self._finalize(
+                    case_dir, selection, status, canonical_existing, device=device,
+                    higher_order_resampling=higher_order_resampling, force_split=force_split,
+                    repo_root=repo_root, resumed=True,
+                )
             raise BackendUnavailable(f"refusing to overwrite normalized masks in {normalized_dir}")
         raw_dir = backend_dir / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
@@ -162,6 +174,30 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
         outputs = normalize_masks(
             image_path, raw_dir, normalized_dir, TOTALSEGMENTATOR_CT_MAPPING
         )
+        return self._finalize(
+            case_dir, selection, status, outputs, device=device,
+            higher_order_resampling=higher_order_resampling, force_split=force_split,
+            repo_root=repo_root, resumed=False,
+        )
+
+    def _finalize(
+        self,
+        case_dir: Path,
+        selection: dict[str, Any],
+        status: BackendStatus,
+        outputs: dict[str, str | Path],
+        *,
+        device: str,
+        higher_order_resampling: bool,
+        force_split: bool,
+        repo_root: Path | None,
+        resumed: bool,
+    ) -> dict[str, Any]:
+        backend_dir = case_dir / "segmentation" / "totalsegmentator"
+        metadata_path = backend_dir / "segmentation_metadata.json"
+        normalized_dir = backend_dir / "normalized"
+        image_path = case_dir / "volume" / "image.nii.gz"
+        summary = selection["series_characterization"]
         qc_path = backend_dir / "qc" / "mask_qc.json"
         qc = run_backend_qc(case_dir, normalized_directory=normalized_dir, report_path=qc_path)
         image = nib.load(str(image_path))
@@ -186,6 +222,7 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             model_options={
                 "higher_order_resampling": higher_order_resampling,
                 "force_split": force_split,
+                "finalization_resumed": resumed,
             },
             device=device,
             output_files=[
@@ -203,7 +240,7 @@ class TotalSegmentatorCTBackend(SegmentationBackend):
             "device": device,
             "mapping": TOTALSEGMENTATOR_CT_MAPPING,
             "raw_outputs_preserved": True,
-            "normalized_outputs": outputs,
+            "normalized_outputs": {name: str(path) for name, path in outputs.items()},
             "timestamp": utc_now(),
         }
         write_json(metadata_path, metadata)

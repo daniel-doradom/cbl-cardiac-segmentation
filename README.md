@@ -59,8 +59,10 @@ tetrahedral mesh workflow. Mesh quality still requires visual review.
 
 ## Setup
 
-Python 3.11/3.12 is a conservative choice for a fresh CT environment. The lab
-server's `vtseg-ct` environment uses Python 3.13.5 and passes backend discovery.
+Python 3.11/3.12 is a conservative choice for a fresh CT environment. On the
+lab server, use the Python 3.11 / CUDA 12.1 `vtseg-ct121` environment for GPU
+inference. The older `vtseg-ct` environment uses a CUDA 13 PyTorch build and is
+discovery-only on the server's CUDA 12.4 driver.
 
 ```bash
 python3.12 -m venv .venv

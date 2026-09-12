@@ -14,7 +14,7 @@ from nibabel.processing import resample_from_to
 from vtseg.errors import GeometryError, NormalizationError, SeriesSelectionError
 from vtseg.provenance import base_provenance, git_commit, software_versions, utc_now, write_json, write_provenance
 from vtseg.qc.masks import run_backend_qc
-from vtseg.segmentation.normalize import CANONICAL_MASKS, write_combined_labels
+from vtseg.segmentation.normalize import CANONICAL_MASKS
 
 
 def _selection(case: Path) -> dict[str, Any]:
@@ -34,8 +34,6 @@ def _validate_shared_frame(native: dict[str, Any], mpr: dict[str, Any]) -> None:
         raise GeometryError("native CT and MPR must both declare FrameOfReferenceUID; refusing to register")
     if native_for != mpr_for:
         raise GeometryError("native CT and MPR FrameOfReferenceUID values differ; refusing to register")
-    if native.get("study_uid") != mpr.get("study_uid"):
-        raise GeometryError("native CT and MPR StudyInstanceUID values differ; refusing to register")
 
 
 def _validated_labels(image_path: Path, normalized: Path) -> np.ndarray:
@@ -110,7 +108,15 @@ def map_native_ct_masks_to_mpr(
         output.set_qform(target_image.affine, code=1)
         output.set_sform(target_image.affine, code=1)
         nib.save(output, destination / f"{name}.nii.gz")
-    combined = write_combined_labels(target_image_path, destination)
+    # ``mapped_labels`` is already a single nearest-neighbor categorical map.
+    # Rebuilding it from the three full-resolution binary masks would require
+    # several extra multi-gigabyte arrays for dense Weasis MPR exports.
+    combined = destination / "combined_labels.nii.gz"
+    combined_image = nib.Nifti1Image(mapped_labels, target_image.affine, target_image.header.copy())
+    combined_image.set_data_dtype(np.uint8)
+    combined_image.set_qform(target_image.affine, code=1)
+    combined_image.set_sform(target_image.affine, code=1)
+    nib.save(combined_image, combined)
     qc_path = destination_root / "qc" / "mask_qc.json"
     qc = run_backend_qc(mpr_case, normalized_directory=destination, report_path=qc_path)
     provenance = base_provenance(
@@ -125,7 +131,10 @@ def map_native_ct_masks_to_mpr(
             "frame_of_reference_uid": mpr_selection["frame_of_reference_uid"], "interpolation": "nearest_neighbor",
         }, device="cpu", output_files=[str(path.relative_to(mpr_case)) for path in [
             *(destination / f"{name}.nii.gz" for name in CANONICAL_MASKS), combined, qc_path
-        ]], software_versions=software_versions(), warnings=qc.get("warnings", []),
+        ]], software_versions=software_versions(), warnings=qc.get("warnings", []) + (
+            ["Weasis-derived MPR StudyInstanceUID differs from the native CT; matching FrameOfReferenceUID was used"]
+            if native_selection.get("study_uid") != mpr_selection.get("study_uid") else []
+        ),
     )
     write_provenance(destination_root / "provenance.json", provenance)
     write_json(destination_root / "segmentation_metadata.json", {

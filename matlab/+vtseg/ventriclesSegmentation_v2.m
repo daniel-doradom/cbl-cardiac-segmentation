@@ -732,6 +732,8 @@ mask = logical(current_mask);
 did_update = false;
 default_spacing_mm = 8;
 default_max_handles = 64;
+handle_spacing_mm = default_spacing_mm;
+max_handle_count = default_max_handles;
 contours = vtseg.mask_to_editable_contours( ...
     mask, default_spacing_mm, default_max_handles, pixel_spacing);
 if isempty(contours)
@@ -751,34 +753,12 @@ rois = cell(numel(contours), 1);
 reference_handles = cell(numel(contours), 1);
 layout = review_layout();
 theme = vtseg.ReviewStyle.theme();
-edit_panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, 'Edit controls');
-spacing_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.85 0.55 0.09], ...
-    'Handle spacing', 'left', false);
-spacing_value = vtseg.ReviewStyle.label(edit_panel, [0.62 0.85 0.32 0.09], '', 'right', true);
-spacing_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.75 0.88 0.08], ...
-    3, 15, default_spacing_mm, [1 / 12, 3 / 12], @update_handle_control_text);
-max_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.62 0.55 0.09], ...
-    'Maximum handles', 'left', false);
-max_value = vtseg.ReviewStyle.label(edit_panel, [0.62 0.62 0.32 0.09], '', 'right', true);
-max_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.52 0.88 0.08], ...
-    20, 96, default_max_handles, [1 / 76, 8 / 76], @update_handle_control_text);
-component_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.39 0.88 0.08], ...
-    'Component', 'left', false);
-component_popup = uicontrol(edit_panel, 'Style', 'popupmenu', 'Units', 'normalized', ...
-    'Position', [0.06 0.30 0.88 0.09], 'String', component_names(contours), ...
-    'BackgroundColor', theme.field, 'ForegroundColor', theme.text, 'FontWeight', 'bold', ...
-    'Callback', @update_component_button);
-apply_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.19 0.42 0.08], 'Apply density', ...
-    @(~, ~) rebuild_controls(), 'neutral');
-reset_button = vtseg.ReviewStyle.button(edit_panel, [0.52 0.19 0.42 0.08], 'Reset edits', ...
-    @(~, ~) rebuild_controls(), 'neutral');
-component_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.10 0.88 0.08], 'Remove selected component', ...
-    @(~, ~) toggle_selected_component(), 'danger');
-accept_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.01 0.57 0.07], 'Accept contour edits', ...
-    @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary');
-cancel_button = vtseg.ReviewStyle.button(edit_panel, [0.67 0.01 0.27 0.07], 'Cancel', ...
-    @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral');
-update_handle_control_text();
+edit_panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, 'Edit contour');
+edit_controls = gobjects(0);
+spacing_slider = gobjects(0);
+max_slider = gobjects(0);
+component_popup = gobjects(0);
+component_button = gobjects(0);
 rebuild_controls();
 uiwait(figure_handle);
 
@@ -830,12 +810,19 @@ did_update = true;
 
     function rebuild_controls()
         clear_edit_rois();
-        spacing_mm = get(spacing_slider, 'Value');
-        max_handles = round(get(max_slider, 'Value'));
+        spacing_mm = handle_spacing_mm;
+        max_handles = max_handle_count;
+        if ~isempty(spacing_slider) && isvalid(spacing_slider)
+            spacing_mm = get(spacing_slider, 'Value');
+        end
+        if ~isempty(max_slider) && isvalid(max_slider)
+            max_handles = round(get(max_slider, 'Value'));
+        end
+        handle_spacing_mm = spacing_mm;
+        max_handle_count = max_handles;
         contours = vtseg.mask_to_editable_contours( ...
             mask, spacing_mm, max_handles, pixel_spacing);
         component_keep = true(numel(contours), 1);
-        set(component_popup, 'String', component_names(contours), 'Value', 1);
         rois = cell(numel(contours), 1);
         reference_handles = cell(numel(contours), 1);
         primary = primary_component_index(contours);
@@ -850,8 +837,7 @@ did_update = true;
         setappdata(figure_handle, 'vtsegActiveEditReferenceHandles', reference_handles);
         setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
         set_active_edit_roi_visibility(figure_handle, contour_width > 0);
-        update_component_button();
-        update_handle_control_text();
+        show_edit_home();
         vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
             'Drag handles: %.1f mm spacing, maximum %d per boundary', ...
             spacing_mm, max_handles));
@@ -869,11 +855,23 @@ did_update = true;
     end
 
     function update_handle_control_text(varargin)
-        set(spacing_value, 'String', sprintf('%.1f mm', get(spacing_slider, 'Value')));
-        set(max_value, 'String', sprintf('%d', round(get(max_slider, 'Value'))));
+        if ~isempty(spacing_slider) && isvalid(spacing_slider)
+            handle_spacing_mm = get(spacing_slider, 'Value');
+            set(spacing_slider, 'TooltipString', sprintf('%.1f mm between handles', ...
+                handle_spacing_mm));
+        end
+        if ~isempty(max_slider) && isvalid(max_slider)
+            max_handle_count = round(get(max_slider, 'Value'));
+            set(max_slider, 'TooltipString', sprintf('At most %d handles per boundary', ...
+                max_handle_count));
+        end
     end
 
     function update_component_button(varargin)
+        if isempty(component_popup) || ~isvalid(component_popup) || ...
+                isempty(component_button) || ~isvalid(component_button)
+            return;
+        end
         outer_indices = find(~[contours.IsHole]);
         if isempty(outer_indices)
             set(component_button, 'Enable', 'off');
@@ -898,6 +896,76 @@ did_update = true;
         component_keep(contour_index) = ~component_keep(contour_index);
         setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
         set_active_edit_roi_visibility(figure_handle, contour_width > 0);
+        update_component_button();
+    end
+
+    function clear_edit_controls()
+        for control_index = 1:numel(edit_controls)
+            if isvalid(edit_controls(control_index))
+                delete(edit_controls(control_index));
+            end
+        end
+        edit_controls = gobjects(0);
+        spacing_slider = gobjects(0);
+        max_slider = gobjects(0);
+        component_popup = gobjects(0);
+        component_button = gobjects(0);
+    end
+
+    function add_edit_control(control)
+        edit_controls(end + 1) = control; %#ok<AGROW>
+    end
+
+    function show_edit_home()
+        clear_edit_controls();
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.74 0.88 0.17], ...
+            'Drag the visible handles to adjust this existing contour.', 'left', true));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.56 0.88 0.12], ...
+            sprintf('Handle density (%.1f mm, max %d)', handle_spacing_mm, max_handle_count), ...
+            @(~, ~) show_density_controls(), 'neutral'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.41 0.88 0.12], ...
+            'Components', @(~, ~) show_component_controls(), 'neutral'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.21 0.88 0.13], ...
+            'Accept contour edits', @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.10], ...
+            'Cancel', @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral'));
+    end
+
+    function show_density_controls()
+        clear_edit_controls();
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.83 0.88 0.08], ...
+            'Handle spacing', 'left', false));
+        spacing_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.74 0.88 0.07], ...
+            3, 15, handle_spacing_mm, [1 / 12, 3 / 12], @update_handle_control_text);
+        add_edit_control(spacing_slider);
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.62 0.88 0.08], ...
+            'Maximum handles', 'left', false));
+        max_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.53 0.88 0.07], ...
+            20, 96, max_handle_count, [1 / 76, 8 / 76], @update_handle_control_text);
+        add_edit_control(max_slider);
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.34 0.88 0.11], ...
+            'Apply density', @(~, ~) rebuild_controls(), 'primary'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.20 0.88 0.10], ...
+            'Reset edits', @(~, ~) rebuild_controls(), 'danger'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.10], ...
+            'Back to edit', @(~, ~) show_edit_home(), 'neutral'));
+        update_handle_control_text();
+    end
+
+    function show_component_controls()
+        clear_edit_controls();
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.79 0.88 0.10], ...
+            'Choose an outer contour to keep or remove.', 'left', true));
+        component_popup = uicontrol(edit_panel, 'Style', 'popupmenu', 'Units', 'normalized', ...
+            'Position', [0.06 0.63 0.88 0.10], 'String', component_names(contours), ...
+            'BackgroundColor', theme.field, 'ForegroundColor', theme.text, 'FontWeight', 'bold', ...
+            'Callback', @update_component_button);
+        add_edit_control(component_popup);
+        component_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.45 0.88 0.11], ...
+            'Remove selected component', @(~, ~) toggle_selected_component(), 'danger');
+        add_edit_control(component_button);
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.10], ...
+            'Back to edit', @(~, ~) show_edit_home(), 'neutral'));
         update_component_button();
     end
 end

@@ -54,11 +54,11 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
 
 - `edit` initializes movable controls from each existing mask boundary. The
   default is 8 mm between controls and at most 64 controls per boundary,
-  independent of CT or MRI pixel resolution. Use **Handle spacing**, **Maximum
-  handles**, and **Apply density** in the edit panel to adjust that density.
-  **Reset edits** restores the imported boundary. The primary component is
-  solid; disconnected components are dashed and can be explicitly removed or
-  restored from the component selector.
+  independent of CT or MRI pixel resolution. The compact **Handle density**
+  view exposes **Handle spacing**, **Maximum handles**, **Apply density**, and
+  **Reset edits**. The separate **Components** view lets the reviewer remove
+  or restore a disconnected component. The primary component is solid;
+  disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.

@@ -734,8 +734,12 @@ default_spacing_mm = 8;
 default_max_handles = 64;
 handle_spacing_mm = default_spacing_mm;
 max_handle_count = default_max_handles;
+% 'uniform' spaces handles equally along the boundary; 'simplify' puts them
+% where the boundary bends and only fills stretches longer than the spacing.
+handle_mode = 'uniform';
+detail_tolerance_mm = 1;
 contours = vtseg.mask_to_editable_contours( ...
-    mask, default_spacing_mm, default_max_handles, pixel_spacing);
+    mask, default_spacing_mm, default_max_handles, pixel_spacing, edit_options());
 if isempty(contours)
     fprintf('This mask is empty. Use redraw to create it from scratch.\n');
     return;
@@ -757,6 +761,12 @@ edit_panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, 'Edit 
 edit_controls = gobjects(0);
 spacing_slider = gobjects(0);
 max_slider = gobjects(0);
+mode_toggle = gobjects(0);
+tolerance_slider = gobjects(0);
+spacing_label = gobjects(0);
+spacing_value = gobjects(0);
+tolerance_value = gobjects(0);
+max_value = gobjects(0);
 component_popup = gobjects(0);
 component_button = gobjects(0);
 rebuild_controls();
@@ -820,8 +830,9 @@ did_update = true;
         end
         handle_spacing_mm = spacing_mm;
         max_handle_count = max_handles;
+        update_handle_control_text();
         contours = vtseg.mask_to_editable_contours( ...
-            mask, spacing_mm, max_handles, pixel_spacing);
+            mask, spacing_mm, max_handles, pixel_spacing, edit_options());
         component_keep = true(numel(contours), 1);
         rois = cell(numel(contours), 1);
         reference_handles = cell(numel(contours), 1);
@@ -838,9 +849,27 @@ did_update = true;
         setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
         set_active_edit_roi_visibility(figure_handle, contour_width > 0);
         show_edit_home();
-        vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
-            'Drag handles: %.1f mm spacing, maximum %d per boundary', ...
-            spacing_mm, max_handles));
+        if strcmp(handle_mode, 'simplify')
+            vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
+                'Drag handles: simplified to %.1f mm detail, gaps up to %.1f mm, maximum %d per boundary', ...
+                detail_tolerance_mm, spacing_mm, max_handles));
+        else
+            vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
+                'Drag handles: %.1f mm spacing, maximum %d per boundary', ...
+                spacing_mm, max_handles));
+        end
+    end
+
+    function options = edit_options()
+        options = struct('mode', handle_mode, 'tolerance', detail_tolerance_mm);
+    end
+
+    function summary = density_summary()
+        if strcmp(handle_mode, 'simplify')
+            summary = sprintf('Handle density (simplified, %.1f mm)', detail_tolerance_mm);
+        else
+            summary = sprintf('Handle density (uniform, %.1f mm)', handle_spacing_mm);
+        end
     end
 
     function clear_edit_rois()
@@ -855,15 +884,47 @@ did_update = true;
     end
 
     function update_handle_control_text(varargin)
+        if ~isempty(mode_toggle) && isvalid(mode_toggle)
+            if get(mode_toggle, 'Value')
+                handle_mode = 'simplify';
+            else
+                handle_mode = 'uniform';
+            end
+        end
+        simplifying = strcmp(handle_mode, 'simplify');
         if ~isempty(spacing_slider) && isvalid(spacing_slider)
             handle_spacing_mm = get(spacing_slider, 'Value');
-            set(spacing_slider, 'TooltipString', sprintf('%.1f mm between handles', ...
-                handle_spacing_mm));
+        end
+        if ~isempty(tolerance_slider) && isvalid(tolerance_slider)
+            detail_tolerance_mm = get(tolerance_slider, 'Value');
+            if simplifying
+                set(tolerance_slider, 'Enable', 'on');
+            else
+                set(tolerance_slider, 'Enable', 'off');
+            end
         end
         if ~isempty(max_slider) && isvalid(max_slider)
             max_handle_count = round(get(max_slider, 'Value'));
-            set(max_slider, 'TooltipString', sprintf('At most %d handles per boundary', ...
-                max_handle_count));
+        end
+        if ~isempty(spacing_label) && isvalid(spacing_label)
+            if simplifying
+                set(spacing_label, 'String', 'Largest gap');
+            else
+                set(spacing_label, 'String', 'Handle spacing');
+            end
+        end
+        if ~isempty(spacing_value) && isvalid(spacing_value)
+            set(spacing_value, 'String', sprintf('%.1f mm', handle_spacing_mm));
+        end
+        if ~isempty(tolerance_value) && isvalid(tolerance_value)
+            if simplifying
+                set(tolerance_value, 'String', sprintf('%.1f mm', detail_tolerance_mm));
+            else
+                set(tolerance_value, 'String', 'off');
+            end
+        end
+        if ~isempty(max_value) && isvalid(max_value)
+            set(max_value, 'String', sprintf('%d', max_handle_count));
         end
     end
 
@@ -908,6 +969,12 @@ did_update = true;
         edit_controls = gobjects(0);
         spacing_slider = gobjects(0);
         max_slider = gobjects(0);
+        mode_toggle = gobjects(0);
+        tolerance_slider = gobjects(0);
+        spacing_label = gobjects(0);
+        spacing_value = gobjects(0);
+        tolerance_value = gobjects(0);
+        max_value = gobjects(0);
         component_popup = gobjects(0);
         component_button = gobjects(0);
     end
@@ -921,8 +988,7 @@ did_update = true;
         add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.74 0.88 0.17], ...
             'Drag the visible handles to adjust this existing contour.', 'left', true));
         add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.56 0.88 0.12], ...
-            sprintf('Handle density (%.1f mm, max %d)', handle_spacing_mm, max_handle_count), ...
-            @(~, ~) show_density_controls(), 'neutral'));
+            density_summary(), @(~, ~) show_density_controls(), 'neutral'));
         add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.41 0.88 0.12], ...
             'Components', @(~, ~) show_component_controls(), 'neutral'));
         add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.21 0.88 0.13], ...
@@ -933,21 +999,41 @@ did_update = true;
 
     function show_density_controls()
         clear_edit_controls();
-        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.83 0.88 0.08], ...
-            'Handle spacing', 'left', false));
-        spacing_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.74 0.88 0.07], ...
+        % Uniform spacing crowds the two walls of a narrow crescent, which are
+        % far apart along the boundary but close on screen. Simplify handles
+        % keeps handles only where the boundary bends, so that no longer
+        % happens; the spacing slider then caps the longest gap instead.
+        mode_toggle = vtseg.ReviewStyle.toggle(edit_panel, [0.06 0.89 0.88 0.09], ...
+            'Simplify handles', double(strcmp(handle_mode, 'simplify')), ...
+            @update_handle_control_text);
+        add_edit_control(mode_toggle);
+        spacing_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.80 0.58 0.07], ...
+            'Handle spacing', 'left', false);
+        add_edit_control(spacing_label);
+        spacing_value = vtseg.ReviewStyle.label(edit_panel, [0.64 0.80 0.30 0.07], '', 'right', true);
+        add_edit_control(spacing_value);
+        spacing_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.73 0.88 0.06], ...
             3, 15, handle_spacing_mm, [1 / 12, 3 / 12], @update_handle_control_text);
         add_edit_control(spacing_slider);
-        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.62 0.88 0.08], ...
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.64 0.58 0.07], ...
+            'Detail tolerance', 'left', false));
+        tolerance_value = vtseg.ReviewStyle.label(edit_panel, [0.64 0.64 0.30 0.07], '', 'right', true);
+        add_edit_control(tolerance_value);
+        tolerance_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.57 0.88 0.06], ...
+            0.5, 5, detail_tolerance_mm, [0.5 / 4.5, 1 / 4.5], @update_handle_control_text);
+        add_edit_control(tolerance_slider);
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.48 0.58 0.07], ...
             'Maximum handles', 'left', false));
-        max_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.53 0.88 0.07], ...
+        max_value = vtseg.ReviewStyle.label(edit_panel, [0.64 0.48 0.30 0.07], '', 'right', true);
+        add_edit_control(max_value);
+        max_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.41 0.88 0.06], ...
             20, 96, max_handle_count, [1 / 76, 8 / 76], @update_handle_control_text);
         add_edit_control(max_slider);
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.34 0.88 0.11], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.28 0.88 0.10], ...
             'Apply density', @(~, ~) rebuild_controls(), 'primary'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.20 0.88 0.10], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.17 0.88 0.09], ...
             'Reset edits', @(~, ~) rebuild_controls(), 'danger'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.10], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.09], ...
             'Back to edit', @(~, ~) show_edit_home(), 'neutral'));
         update_handle_control_text();
     end

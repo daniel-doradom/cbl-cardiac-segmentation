@@ -437,11 +437,19 @@ the choice applies to:
 - `edit` initializes physical-space draggable controls from the existing mask.
   By default, they are 8 mm apart with at most 64 controls per boundary, so a
   fine CT MPR does not create more handles merely because it has smaller
-  voxels. Select **Handle density** for **Handle spacing**, **Maximum handles**,
-  **Apply density**, and **Reset edits**. Select **Components** to remove or
-  restore a disconnected component. The largest outer boundary is the primary
-  component; smaller disconnected components are dashed. No component is
-  removed automatically.
+  voxels. Select **Handle density** for **Simplify handles**, **Handle
+  spacing**, **Detail tolerance**, **Maximum handles**, **Apply density**, and
+  **Reset edits**. Uniform spacing is measured along the boundary, so on a
+  narrow crescent the two walls, far apart along the outline but close on
+  screen, look crowded while straighter stretches look sparse. Turn on
+  **Simplify handles** to place handles only where the boundary bends by more
+  than **Detail tolerance** (default 1 mm) and to fill straight stretches only
+  as far as needed to keep every gap under **Largest gap**. Either mode keeps
+  every handle on the imported boundary and changes nothing until a handle is
+  moved and accepted. Select **Components** to remove or restore a
+  disconnected component. The largest outer boundary is the primary component;
+  smaller disconnected components are dashed. No component is removed
+  automatically.
 - accepting without moving a control preserves the imported mask exactly. When
   a control moves, MATLAB smoothly deforms the dense original boundary before
   rasterizing it, rather than replacing the mask with the sparse control

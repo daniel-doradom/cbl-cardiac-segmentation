@@ -93,3 +93,80 @@ verifyEqual(testCase, size(contours.Position, 1), size(contours.DensePosition, 1
 rebuilt = vtseg.editable_contours_to_mask(contours, size(mask));
 verifyTrue(testCase, rebuilt(20, 20));
 end
+
+function testSimplifiedHandlesSitOnRectangleCorners(testCase)
+mask = false(100, 100);
+mask(20:60, 30:90) = true;
+options = struct('mode', 'simplify', 'tolerance', 1);
+
+% A very large gap limit leaves only the bends: the four corners.
+contours = vtseg.mask_to_editable_contours(mask, 1000, 96, [1, 1], options);
+
+verifyEqual(testCase, numel(contours), 1);
+verifyEqual(testCase, size(contours.Position, 1), 4);
+corners = [30 20; 90 20; 90 60; 30 60];
+for corner = 1:4
+    nearest = min(sqrt(sum((contours.Position - corners(corner, :)) .^ 2, 2)));
+    verifyLessThanOrEqual(testCase, nearest, 0.5);
+end
+% Untouched simplified handles still return the imported mask exactly.
+rebuilt = vtseg.editable_contours_to_mask(contours, size(mask));
+verifyEqual(testCase, rebuilt, mask);
+end
+
+function testSimplifiedHandlesRespectTheLargestGap(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 30 ^ 2;
+options = struct('mode', 'simplify', 'tolerance', 0.5);
+
+contours = vtseg.mask_to_editable_contours(mask, 10, 96, [1, 1], options);
+
+closed = [contours.DensePosition; contours.DensePosition(1, :)];
+perimeter = sum(sqrt(sum(diff(closed, 1, 1) .^ 2, 2)));
+parameters = sort(contours.SampleParameter);
+gaps = [diff(parameters); 1 - parameters(end) + parameters(1)] .* perimeter;
+% Extra handles snap to the nearest dense point, so allow one pixel of slack.
+verifyLessThanOrEqual(testCase, max(gaps), 10 + 1.5);
+verifyGreaterThanOrEqual(testCase, size(contours.Position, 1), 3);
+verifyLessThanOrEqual(testCase, size(contours.Position, 1), 96);
+end
+
+function testSimplifiedHandlesAreSparserThanUniformOnSmoothBoundary(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 30 ^ 2;
+
+uniform = vtseg.mask_to_editable_contours(mask, 8, 96, [1, 1]);
+simplified = vtseg.mask_to_editable_contours(mask, 15, 96, [1, 1], ...
+    struct('mode', 'simplify', 'tolerance', 1));
+
+verifyLessThanOrEqual(testCase, size(simplified.Position, 1), size(uniform.Position, 1));
+% Every simplified handle lies on the dense boundary.
+for index = 1:size(simplified.Position, 1)
+    nearest = min(sqrt(sum((simplified.DensePosition - simplified.Position(index, :)) .^ 2, 2)));
+    verifyLessThanOrEqual(testCase, nearest, 1e-9);
+end
+end
+
+function testSimplifiedHandlesDeformTheDenseBoundary(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 32 ^ 2;
+controls = vtseg.mask_to_editable_contours(mask, 12, 64, [1, 1], ...
+    struct('mode', 'simplify', 'tolerance', 1));
+edited = controls;
+edited.Position(1, :) = edited.Position(1, :) + [5, -3];
+
+[deformed, changed] = vtseg.deform_editable_contours(controls, edited);
+
+verifyTrue(testCase, changed);
+verifyEqual(testCase, size(deformed.Position), size(controls.DensePosition));
+verifyGreaterThan(testCase, max(abs(deformed.Position(:) - controls.DensePosition(:))), 0);
+end
+
+function testSimplifyRejectsBadOptions(testCase)
+mask = false(20, 20);
+mask(5:15, 5:15) = true;
+verifyError(testCase, @() vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1], ...
+    struct('mode', 'zigzag')), 'vtseg:EditableContourMode');
+verifyError(testCase, @() vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1], ...
+    struct('mode', 'simplify', 'tolerance', 0)), 'vtseg:EditableContourTolerance');
+end

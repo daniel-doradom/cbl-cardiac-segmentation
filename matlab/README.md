@@ -55,10 +55,16 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
 - `edit` initializes movable controls from each existing mask boundary. The
   default is 8 mm between controls and at most 64 controls per boundary,
   independent of CT or MRI pixel resolution. The compact **Handle density**
-  view exposes **Handle spacing**, **Maximum handles**, **Apply density**, and
-  **Reset edits**. The separate **Components** view lets the reviewer remove
-  or restore a disconnected component. The primary component is solid;
-  disconnected components are dashed.
+  view exposes **Simplify handles**, **Handle spacing**, **Detail tolerance**,
+  **Maximum handles**, **Apply density**, and **Reset edits**. Uniform spacing
+  measures distance along the boundary, so on a narrow crescent such as the RV
+  the two walls, far apart along the outline but close on screen, look
+  crowded. **Simplify handles** instead keeps a handle only where the boundary
+  bends by more than **Detail tolerance**, and adds handles on straight or
+  gently curved stretches only to keep every gap under the spacing value,
+  which is relabelled **Largest gap**. The separate **Components** view lets
+  the reviewer remove or restore a disconnected component. The primary
+  component is solid; disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.

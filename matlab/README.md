@@ -62,7 +62,12 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   crowded. **Simplify handles** instead keeps a handle only where the boundary
   bends by more than **Detail tolerance**, and adds handles on straight or
   gently curved stretches only to keep every gap under the spacing value,
-  which is relabelled **Largest gap**. The separate **Components** view lets
+  which is relabelled **Largest gap** and reaches 40 mm in this mode. To thin
+  a crescent's smooth walls, raise **Largest gap** or **Detail tolerance**;
+  the tips keep their handles either way. A component with twelve or fewer
+  boundary pixels keeps every one of them as a handle so it cannot vanish;
+  such a cluster is best removed from the **Components** view rather than
+  edited. The separate **Components** view lets
   the reviewer remove or restore a disconnected component. The primary
   component is solid; disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.

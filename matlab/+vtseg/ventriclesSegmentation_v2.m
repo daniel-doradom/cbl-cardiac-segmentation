@@ -864,6 +864,16 @@ did_update = true;
         options = struct('mode', handle_mode, 'tolerance', detail_tolerance_mm);
     end
 
+    function [range_min, range_max] = spacing_range(simplifying)
+        if simplifying
+            range_min = 5;
+            range_max = 40;
+        else
+            range_min = 3;
+            range_max = 15;
+        end
+    end
+
     function summary = density_summary()
         if strcmp(handle_mode, 'simplify')
             summary = sprintf('Handle density (simplified, %.1f mm)', detail_tolerance_mm);
@@ -893,7 +903,14 @@ did_update = true;
         end
         simplifying = strcmp(handle_mode, 'simplify');
         if ~isempty(spacing_slider) && isvalid(spacing_slider)
-            handle_spacing_mm = get(spacing_slider, 'Value');
+            % Uniform spacing is capped at 15 mm; as a largest-gap limit the
+            % same slider must reach further, or a smooth wall can never be
+            % thinned below what uniform spacing already gives.
+            [range_min, range_max] = spacing_range(simplifying);
+            clamped = min(range_max, max(range_min, get(spacing_slider, 'Value')));
+            set(spacing_slider, 'Min', range_min, 'Max', range_max, 'Value', clamped, ...
+                'SliderStep', [1, 5] ./ (range_max - range_min));
+            handle_spacing_mm = clamped;
         end
         if ~isempty(tolerance_slider) && isvalid(tolerance_slider)
             detail_tolerance_mm = get(tolerance_slider, 'Value');
@@ -1012,8 +1029,10 @@ did_update = true;
         add_edit_control(spacing_label);
         spacing_value = vtseg.ReviewStyle.label(edit_panel, [0.64 0.80 0.30 0.07], '', 'right', true);
         add_edit_control(spacing_value);
+        [range_min, range_max] = spacing_range(strcmp(handle_mode, 'simplify'));
         spacing_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.73 0.88 0.06], ...
-            3, 15, handle_spacing_mm, [1 / 12, 3 / 12], @update_handle_control_text);
+            range_min, range_max, min(range_max, max(range_min, handle_spacing_mm)), ...
+            [1, 5] ./ (range_max - range_min), @update_handle_control_text);
         add_edit_control(spacing_slider);
         add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.64 0.58 0.07], ...
             'Detail tolerance', 'left', false));

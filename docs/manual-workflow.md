@@ -444,9 +444,14 @@ the choice applies to:
   screen, look crowded while straighter stretches look sparse. Turn on
   **Simplify handles** to place handles only where the boundary bends by more
   than **Detail tolerance** (default 1 mm) and to fill straight stretches only
-  as far as needed to keep every gap under **Largest gap**. Either mode keeps
-  every handle on the imported boundary and changes nothing until a handle is
-  moved and accepted. Select **Components** to remove or restore a
+  as far as needed to keep every gap under **Largest gap**, which reaches
+  40 mm in this mode. On a smooth wall a 1 mm tolerance still places a handle
+  about every 15 mm, so to thin a crescent's walls raise **Largest gap** or
+  **Detail tolerance**; the tips keep their handles either way. A component of
+  twelve or fewer boundary pixels keeps all of them as handles so it cannot
+  vanish; if such a cluster is unwanted, remove it from **Components**. Either
+  mode keeps every handle on the imported boundary and changes nothing until
+  a handle is moved and accepted. Select **Components** to remove or restore a
   disconnected component. The largest outer boundary is the primary component;
   smaller disconnected components are dashed. No component is removed
   automatically.

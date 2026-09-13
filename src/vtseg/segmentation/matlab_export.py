@@ -65,7 +65,7 @@ def select_slice_indices(
     end_slice: int | None = None,
     count: int | None = None,
 ) -> list[int]:
-    """Select a base-to-apex range, always retaining its two endpoints."""
+    """Select a range in the chosen order, always retaining its two endpoints."""
     total = len(ordered_indices)
     end_slice = total if end_slice is None else end_slice
     if start_slice < 1 or end_slice < start_slice or end_slice > total:
@@ -91,7 +91,7 @@ def preview_matlab_slices(
     *,
     slice_order: str = "base_to_apex",
 ) -> dict[str, Any]:
-    """Describe the base-to-apex positions without writing a MATLAB case.
+    """Describe the ordered positions without writing a MATLAB case.
 
     Reference z-indices are zero-based, while the positions accepted by
     ``export-matlab-seg`` are one-based.  DICOM filenames are deliberately not
@@ -131,8 +131,10 @@ def preview_matlab_slices(
         ordered, order_reason = base_to_apex, reason
     elif slice_order == "reference":
         ordered, order_reason = list(range(image.shape[2])), "explicit_reference_order"
+    elif slice_order == "reverse_reference":
+        ordered, order_reason = list(reversed(range(image.shape[2]))), "explicit_reverse_reference_order"
     else:
-        raise NormalizationError("slice order must be 'base_to_apex' or 'reference'")
+        raise NormalizationError("slice order must be 'base_to_apex', 'reference', or 'reverse_reference'")
 
     slices = [
         {
@@ -216,8 +218,11 @@ def export_matlab_case(
         ordered, order_reason = base_to_apex, base_to_apex_reason
     elif slice_order == "reference":
         ordered, order_reason = list(range(image.shape[2])), "explicit_reference_order"
+    elif slice_order == "reverse_reference":
+        ordered, order_reason = list(reversed(range(image.shape[2]))), "explicit_reverse_reference_order"
+        base_to_apex_positions = {index: position + 1 for position, index in enumerate(ordered)}
     else:
-        raise NormalizationError("slice order must be 'base_to_apex' or 'reference'")
+        raise NormalizationError("slice order must be 'base_to_apex', 'reference', or 'reverse_reference'")
     indices = select_slice_indices(
         ordered,
         start_slice=start_slice,

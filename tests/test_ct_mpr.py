@@ -158,6 +158,24 @@ def test_ct_dicom_to_mpr_review_promotion_matlab_round_trip(tmp_path, dicom_writ
     assert manifest["slices"][0]["image_position_patient"] == [10.0, 20.0, 0.0]
     assert (matlab_case / "seg" / "vtseg_export_manifest.json").is_file()
     assert (matlab_case / "raw" / "slice_0001.dcm").is_file()
+    reverse_case = tmp_path / "matlab-reverse"
+    reversed_manifest = export_matlab_case(
+        best / "segmentation" / "selected" / "normalized", best, reverse_case,
+        start_slice=2, end_slice=4, slices=2, slice_order="reverse_reference",
+        slicer_approved=True,
+    )
+    assert reversed_manifest["slice_order_reason"] == "explicit_reverse_reference_order"
+    assert [entry["reference_volume_index"] for entry in reversed_manifest["slices"]] == [2, 0]
+    assert [entry["base_to_apex_reference_slice"] for entry in reversed_manifest["slices"]] == [2, 4]
+    assert [entry["source_dicom_filename"] for entry in reversed_manifest["slices"]] == [
+        "original_03.dcm", "original_01.dcm"
+    ]
+    from vtseg.segmentation.matlab_export import preview_matlab_slices
+    reverse_preview = preview_matlab_slices(
+        best / "segmentation" / "selected" / "normalized", best,
+        slice_order="reverse_reference",
+    )
+    assert [entry["reference_z_index"] for entry in reverse_preview["slices"]] == [3, 2, 1, 0]
     import_matlab_case(matlab_case, best, best / "manual" / "normalized")
     imported = nib.load(str(best / "manual" / "normalized" / "combined_labels.nii.gz"))
     assert imported.shape == nib.load(str(best / "volume" / "image.nii.gz")).shape

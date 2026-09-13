@@ -597,9 +597,23 @@ Use `--candidate native-mapped` when that is the Slicer-approved result. Run
 Select the intended range from that listing, then visually confirm the two
 exported endpoints; intermediate slices are evenly spaced.
 
+If Slicer shows the approved short-axis stack in the opposite K direction from
+the stored NIfTI z order, use `--slice-order reverse-reference` for both preview
+and export. Its one-based selection position is `N - reference_z_index`, where
+`N` is the number of NIfTI slices. Verify the Slicer K-to-NIfTI mapping from
+the image geometry for that case; do not assume every Slicer load reverses K.
+
 CT exports contain `raw/` short-axis CT DICOMs, `seg/Lendo.mat`, `Rendo.mat`,
 `Epi.mat`, `myocardium.mat`, and `seg/vtseg_export_manifest.json`. They retain
-the source DICOM filename/position mapping. On the workstation run:
+the source DICOM filename/position mapping.
+
+For a trial of a reviewed candidate before promotion, export directly from the
+MPR case's `segmentation/native_ct_mapped/normalized/` or
+`segmentation/totalsegmentator/normalized/`, using that same MPR case as
+`--reference`. Keep the trial under `results/legacy/`; promotion remains an
+explicit later decision.
+
+On the workstation run:
 
 ```matlab
 repoRoot = '/path/to/vt-segmentation-eval';

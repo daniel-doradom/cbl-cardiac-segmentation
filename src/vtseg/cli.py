@@ -189,24 +189,24 @@ def build_parser() -> argparse.ArgumentParser:
     matlab_import_parser.add_argument("matlab_case_directory", type=Path)
     matlab_import_parser.add_argument("--reference", required=True, type=Path)
     matlab_import_parser.add_argument("--output", required=True, type=Path)
-    matlab_parser.add_argument("--start-slice", type=int, default=1, help="one-based base-to-apex start")
-    matlab_parser.add_argument("--end-slice", type=int, help="one-based base-to-apex end")
+    matlab_parser.add_argument("--start-slice", type=int, default=1, help="one-based start in the chosen slice order")
+    matlab_parser.add_argument("--end-slice", type=int, help="one-based end in the chosen slice order")
     matlab_parser.add_argument(
         "--slice-order",
-        choices=("base-to-apex", "reference"),
+        choices=("base-to-apex", "reference", "reverse-reference"),
         default="base-to-apex",
-        help="base-to-apex is inferred from endpoint mask area; reference preserves NIfTI order",
+        help="base-to-apex infers direction from mask area; reference and reverse-reference use explicit NIfTI z order",
     )
 
     preview_parser = sub.add_parser(
         "preview-matlab-slices",
-        help="show base-to-apex MATLAB-export positions without copying DICOM files",
+        help="show MATLAB-export selection positions without copying DICOM files",
     )
     preview_parser.add_argument("mask_directory", type=Path)
     preview_parser.add_argument("--reference", required=True, type=Path)
     preview_parser.add_argument(
         "--slice-order",
-        choices=("base-to-apex", "reference"),
+        choices=("base-to-apex", "reference", "reverse-reference"),
         default="base-to-apex",
     )
 

@@ -1,8 +1,8 @@
 function main_ct_tetmesh(main_path, gs_range)
 %MAIN_CT_TETMESH Review imported CT masks and generate biventricular meshes.
 %
-% main_path is an export-matlab-seg case created from a Slicer-approved,
-% promoted CT short-axis MPR. CT has no cine/LGE scar stage in this workflow.
+% main_path is a Slicer-reviewed export-matlab-seg CT short-axis case.
+% CT has no cine/LGE scar stage in this workflow.
 
 if nargin < 2 || isempty(gs_range)
     gs_range = [];

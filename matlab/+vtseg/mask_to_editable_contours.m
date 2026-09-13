@@ -81,10 +81,12 @@ end
 
 function depth = boundary_depth(adjacency, index)
 depth = 0;
-parent = find(adjacency(index, :), 1);
+% bwboundaries stores A(parent, child) = 1, so a boundary's parent is
+% found in its column, not its row.
+parent = find(adjacency(:, index), 1);
 while ~isempty(parent)
     depth = depth + 1;
-    parent = find(adjacency(parent, :), 1);
+    parent = find(adjacency(:, parent), 1);
 end
 end
 

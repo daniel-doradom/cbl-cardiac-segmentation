@@ -122,9 +122,12 @@ end
 
 sample_at = linspace(0, perimeter, target_count + 1)';
 sample_at(end) = [];
-sampled = [ ...
+candidate_positions = [ ...
     interp1(cumulative, closed(:, 1), sample_at, 'linear'), ...
     interp1(cumulative, closed(:, 2), sample_at, 'linear')];
-[sampled, keep] = unique(sampled, 'rows', 'stable');
-sample_parameter = sample_at(keep) ./ perimeter;
+% Keep the established one-output unique call for backwards-compatible
+% boundary ordering; the parameter lookup does not influence the polygon.
+sampled = unique(candidate_positions, 'rows', 'stable');
+[~, sample_indices] = ismember(sampled, candidate_positions, 'rows');
+sample_parameter = sample_at(sample_indices) ./ perimeter;
 end

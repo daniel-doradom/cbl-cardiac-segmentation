@@ -79,3 +79,15 @@ verifyTrue(testCase, changed);
 verifyEqual(testCase, size(deformed.Position), size(controls.DensePosition));
 verifyGreaterThan(testCase, max(abs(deformed.Position(:) - controls.DensePosition(:))), 0);
 end
+
+function testSmallComponentRetainsNativeBoundary(testCase)
+mask = false(40, 40);
+mask(20:22, 20:22) = true;
+
+contours = vtseg.mask_to_editable_contours(mask, 8, 64, [0.5, 0.5]);
+
+verifyEqual(testCase, numel(contours), 1);
+verifyEqual(testCase, size(contours.Position, 1), size(contours.DensePosition, 1));
+rebuilt = vtseg.editable_contours_to_mask(contours, size(mask));
+verifyTrue(testCase, rebuilt(20, 20));
+end

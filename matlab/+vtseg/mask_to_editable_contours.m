@@ -119,7 +119,10 @@ target_count = max(3, min(max_vertices, round(perimeter / vertex_spacing)));
 target_count = min(target_count, size(points, 1));
 cumulative = [0; cumsum(segment_lengths)];
 dense_parameter = cumulative(1:end-1) ./ perimeter;
-if target_count == size(points, 1)
+% A small component can vanish when a four-point approximation is rasterized
+% back onto pixels. Preserve its native boundary: it remains removable in the
+% editor without making normal ventricular contours denser.
+if size(points, 1) <= 12 || target_count == size(points, 1)
     sampled = points;
     sample_parameter = dense_parameter;
     return;

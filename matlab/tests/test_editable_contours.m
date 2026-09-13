@@ -64,6 +64,8 @@ controls = vtseg.mask_to_editable_contours(mask, 8, 64, [0.5, 0.5]);
 
 verifyFalse(testCase, changed);
 verifyEqual(testCase, deformed.Position, controls.DensePosition);
+rebuilt = vtseg.editable_contours_to_mask(controls, size(mask));
+verifyEqual(testCase, rebuilt, mask);
 end
 
 function testMovedControlDeformsDenseBoundary(testCase)

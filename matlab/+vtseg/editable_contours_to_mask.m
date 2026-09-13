@@ -9,6 +9,20 @@ mask = false(image_size);
 if isempty(contours)
     return;
 end
+if isfield(contours, 'OriginalMask') && isfield(contours, 'InitialPosition')
+    original_mask = logical(contours(1).OriginalMask);
+    unchanged = isequal(size(original_mask), image_size);
+    for contour_index = 1:numel(contours)
+        unchanged = unchanged && isequal( ...
+            contours(contour_index).Position, contours(contour_index).InitialPosition);
+    end
+    if unchanged
+        % Polygon centre-lines cannot exactly reproduce every tiny pixel
+        % component. An untouched edit must retain the imported bitmap exactly.
+        mask = original_mask;
+        return;
+    end
+end
 if isfield(contours, 'Depth')
     [~, order] = sort([contours.Depth]);
 else

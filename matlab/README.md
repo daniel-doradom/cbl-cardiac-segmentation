@@ -48,12 +48,20 @@ opacity control, correction window, and final overview figures without changing
 the source DICOMs or masks. MATLAB corrections are authoritative for mesh
 generation.
 
-During correction, press Enter at the slice prompt to keep it unchanged or
-answer `y` to review its structures. Each LV, RV, and epicardial mask then
-supports `keep`, `edit`, `redraw`, and `clear`:
+During correction, use the in-window **Previous**, **Keep / Next**, and
+**Modify** controls. Each LV, RV, and epicardial mask then supports `keep`,
+`edit`, `redraw`, and `clear`:
 
-- `edit` initializes movable polygon vertices from every existing mask
-  component. Move only the needed vertices and click **Accept contour edits**.
+- `edit` initializes movable controls from each existing mask boundary. The
+  default is 8 mm between controls and at most 64 controls per boundary,
+  independent of CT or MRI pixel resolution. Use **Handle spacing**, **Maximum
+  handles**, and **Apply density** in the edit panel to adjust that density.
+  **Reset edits** restores the imported boundary. The primary component is
+  solid; disconnected components are dashed and can be explicitly removed or
+  restored from the component selector.
+- accepting an edit with no moved controls leaves the imported mask unchanged.
+  When a control is moved, its displacement is smoothly applied to the dense
+  original boundary before it is rasterized, preserving native CT detail.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the entire slice.

@@ -1,16 +1,28 @@
-function contours = mask_to_editable_contours(mask, vertex_spacing, max_vertices)
+function contours = mask_to_editable_contours(mask, vertex_spacing, max_vertices, pixel_spacing)
 %MASK_TO_EDITABLE_CONTOURS Convert a binary mask to editable polygon vertices.
 %
 % Each returned struct contains Position as [x y] image coordinates, an
 % IsHole flag, and its nesting Depth. Boundaries are sampled at roughly
-% vertex_spacing pixels and capped at max_vertices so drawpolygon remains
-% practical to edit.
+% vertex_spacing pixels by default and capped at max_vertices so drawpolygon
+% remains practical to edit. When pixel_spacing is supplied as [row column]
+% millimetres, vertex_spacing is interpreted in millimetres. DensePosition
+% retains the original boundary so an editor can deform it without losing
+% native mask detail.
 
 if nargin < 2 || isempty(vertex_spacing)
     vertex_spacing = 6;
 end
 if nargin < 3 || isempty(max_vertices)
     max_vertices = 96;
+end
+if nargin < 4 || isempty(pixel_spacing)
+    pixel_spacing = [];
+else
+    pixel_spacing = double(pixel_spacing(:)');
+    if numel(pixel_spacing) ~= 2 || any(~isfinite(pixel_spacing)) || any(pixel_spacing <= 0)
+        error('vtseg:EditableContourPixelSpacing', ...
+            'Pixel spacing must be a positive [row column] millimetre pair.');
+    end
 end
 if ~ismatrix(mask)
     error('vtseg:EditableContourDimensions', 'Mask must be a two-dimensional array.');
@@ -22,7 +34,9 @@ end
 
 [boundaries, ~, object_count, adjacency] = bwboundaries(logical(mask), 8, 'holes');
 contours = repmat( ...
-    struct('Position', zeros(0, 2), 'IsHole', false, 'Depth', 0), 0, 1);
+    struct('Position', zeros(0, 2), 'IsHole', false, 'Depth', 0, ...
+        'DensePosition', zeros(0, 2), 'DenseParameter', zeros(0, 1), ...
+        'SampleParameter', zeros(0, 1)), 0, 1);
 
 for index = 1:numel(boundaries)
     boundary = boundaries{index};
@@ -33,14 +47,19 @@ for index = 1:numel(boundaries)
     if size(unique(position, 'rows'), 1) < 3
         position = pixel_box(position);
     end
-    position = resample_closed_boundary(position, vertex_spacing, max_vertices);
+    dense_position = position;
+    [position, sample_parameter, dense_parameter] = resample_closed_boundary( ...
+        dense_position, vertex_spacing, max_vertices, pixel_spacing);
     if size(position, 1) < 3
         continue;
     end
     contours(end + 1, 1) = struct( ...
         'Position', position, ...
         'IsHole', index > object_count, ...
-        'Depth', boundary_depth(adjacency, index)); %#ok<AGROW>
+        'Depth', boundary_depth(adjacency, index), ...
+        'DensePosition', dense_position, ...
+        'DenseParameter', dense_parameter, ...
+        'SampleParameter', sample_parameter); %#ok<AGROW>
 end
 end
 
@@ -66,32 +85,46 @@ while ~isempty(parent)
 end
 end
 
-function sampled = resample_closed_boundary(points, vertex_spacing, max_vertices)
+function [sampled, sample_parameter, dense_parameter] = resample_closed_boundary( ...
+        points, vertex_spacing, max_vertices, pixel_spacing)
 if size(points, 1) < 3
     sampled = points;
+    sample_parameter = zeros(size(points, 1), 1);
+    dense_parameter = sample_parameter;
     return;
 end
 
 closed = [points; points(1, :)];
-segment_lengths = sqrt(sum(diff(closed, 1, 1) .^ 2, 2));
+if isempty(pixel_spacing)
+    metric_points = closed;
+else
+    % Image positions are [x y], whereas DICOM spacing is [row column].
+    metric_points = closed .* [pixel_spacing(2), pixel_spacing(1)];
+end
+segment_lengths = sqrt(sum(diff(metric_points, 1, 1) .^ 2, 2));
 perimeter = sum(segment_lengths);
 if perimeter == 0
     sampled = zeros(0, 2);
+    sample_parameter = zeros(0, 1);
+    dense_parameter = sample_parameter;
     return;
 end
 
 target_count = max(3, min(max_vertices, round(perimeter / vertex_spacing)));
 target_count = min(target_count, size(points, 1));
+cumulative = [0; cumsum(segment_lengths)];
+dense_parameter = cumulative(1:end-1) ./ perimeter;
 if target_count == size(points, 1)
     sampled = points;
+    sample_parameter = dense_parameter;
     return;
 end
 
-cumulative = [0; cumsum(segment_lengths)];
 sample_at = linspace(0, perimeter, target_count + 1)';
 sample_at(end) = [];
 sampled = [ ...
     interp1(cumulative, closed(:, 1), sample_at, 'linear'), ...
     interp1(cumulative, closed(:, 2), sample_at, 'linear')];
-sampled = unique(sampled, 'rows', 'stable');
+[sampled, keep] = unique(sampled, 'rows', 'stable');
+sample_parameter = sample_at(keep) ./ perimeter;
 end

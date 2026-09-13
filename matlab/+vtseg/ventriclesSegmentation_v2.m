@@ -462,6 +462,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
         end
 
         if strcmp(action, 'modify')
+            pixel_spacing = editable_pixel_spacing(path_image, folder(k).name);
             old_Lendo = Lendo(:, :, k);
             old_Rendo = Rendo(:, :, k);
             old_Epi = Epi(:, :, k);
@@ -481,7 +482,8 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
                 [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi] = ...
                     correct_slice_masks( ...
                         ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
-                        candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range);
+                        candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range, ...
+                        pixel_spacing);
 
                 if ~isvalid(figure_handle)
                     disp('Review window was closed. Masks will not be saved.');
@@ -609,11 +611,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
 end
 
 function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
-        ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range)
+        ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range, ...
+        pixel_spacing)
 
     current_mask = Lendo(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
-        ax, display_image, current_mask, 'LV endocardium', 'r', gs_range);
+        ax, display_image, current_mask, 'LV endocardium', 'r', gs_range, pixel_spacing);
     if did_update
         Lendo(:, :, k) = apply_mask_update( ...
             Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -625,7 +628,7 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
 
     current_mask = Rendo(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
-        ax, display_image, current_mask, 'RV endocardium', 'c', gs_range);
+        ax, display_image, current_mask, 'RV endocardium', 'c', gs_range, pixel_spacing);
     if did_update
         Rendo(:, :, k) = apply_mask_update( ...
             Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -637,7 +640,7 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
 
     current_mask = Epi(display_crop.rows, display_crop.columns, k);
     [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
-        ax, display_image, current_mask, 'Epicardium', 'g', gs_range);
+        ax, display_image, current_mask, 'Epicardium', 'g', gs_range, pixel_spacing);
     if did_update
         Epi(:, :, k) = apply_mask_update( ...
             Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -650,7 +653,7 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
     if has_lepi
         current_mask = lepi(display_crop.rows, display_crop.columns, k);
         [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
-            ax, display_image, current_mask, 'LV epicardium', 'b', gs_range);
+            ax, display_image, current_mask, 'LV epicardium', 'b', gs_range, pixel_spacing);
         if did_update
             lepi(:, :, k) = apply_mask_update( ...
                 lepi(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -679,7 +682,7 @@ function show_current_correction_masks( ...
 end
 
 function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
-        ax, Im, current_mask, structure_name, color, gs_range)
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
 %CORRECT_ONE_MASK Prompt for one structure. display_dirty is true when the
 % chosen action replaced what the axes shows, so the caller must redraw the
 % full slice even if the mask itself did not change (a cancelled edit).
@@ -708,7 +711,8 @@ function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_m
     end
 
     if strcmp(action, 'edit')
-        [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range);
+        [mask, did_update] = edit_existing_mask( ...
+            ax, Im, current_mask, color, gs_range, pixel_spacing);
         display_dirty = true;
         return;
     end
@@ -722,10 +726,14 @@ function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_m
     end
 end
 
-function [mask, did_update] = edit_existing_mask(ax, Im, current_mask, color, gs_range)
+function [mask, did_update] = edit_existing_mask( ...
+        ax, Im, current_mask, color, gs_range, pixel_spacing)
 mask = logical(current_mask);
 did_update = false;
-contours = vtseg.mask_to_editable_contours(mask);
+default_spacing_mm = 8;
+default_max_handles = 64;
+contours = vtseg.mask_to_editable_contours( ...
+    mask, default_spacing_mm, default_max_handles, pixel_spacing);
 if isempty(contours)
     fprintf('This mask is empty. Use redraw to create it from scratch.\n');
     return;
@@ -735,62 +743,163 @@ end
 cla(ax);
 imshow(Im, display_gs_range, 'Parent', ax);
 hold(ax, 'on');
-plot_mask_contour(ax, mask, color, contour_width);
-
-rois = cell(numel(contours), 1);
-for index = 1:numel(contours)
-    rois{index} = drawpolygon(ax, ...
-        'Position', contours(index).Position, ...
-        'Color', color, ...
-        'LineWidth', contour_width, ...
-        'FaceAlpha', 0.10);
-end
-vtseg.ReviewStyle.axesTitle(ax, 'Drag contour vertices, then accept or cancel in the side panel');
 
 figure_handle = ancestor(ax, 'figure');
-setappdata(figure_handle, 'vtsegActiveEditRois', rois);
-set_active_edit_roi_visibility(figure_handle, contour_width > 0);
 setappdata(figure_handle, 'vtsegContourEditAction', '');
-[accept_position, cancel_position] = review_edit_button_positions();
-accept_button = vtseg.ReviewStyle.button(figure_handle, accept_position, 'Accept contour edits', ...
+component_keep = true(numel(contours), 1);
+rois = cell(numel(contours), 1);
+reference_handles = cell(numel(contours), 1);
+layout = review_layout();
+theme = vtseg.ReviewStyle.theme();
+edit_panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, 'Edit controls');
+spacing_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.85 0.55 0.09], ...
+    'Handle spacing', 'left', false);
+spacing_value = vtseg.ReviewStyle.label(edit_panel, [0.62 0.85 0.32 0.09], '', 'right', true);
+spacing_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.75 0.88 0.08], ...
+    3, 15, default_spacing_mm, [1 / 12, 3 / 12], @update_handle_control_text);
+max_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.62 0.55 0.09], ...
+    'Maximum handles', 'left', false);
+max_value = vtseg.ReviewStyle.label(edit_panel, [0.62 0.62 0.32 0.09], '', 'right', true);
+max_slider = vtseg.ReviewStyle.slider(edit_panel, [0.06 0.52 0.88 0.08], ...
+    20, 96, default_max_handles, [1 / 76, 8 / 76], @update_handle_control_text);
+component_label = vtseg.ReviewStyle.label(edit_panel, [0.06 0.39 0.88 0.08], ...
+    'Component', 'left', false);
+component_popup = uicontrol(edit_panel, 'Style', 'popupmenu', 'Units', 'normalized', ...
+    'Position', [0.06 0.30 0.88 0.09], 'String', component_names(contours), ...
+    'BackgroundColor', theme.field, 'ForegroundColor', theme.text, 'FontWeight', 'bold', ...
+    'Callback', @update_component_button);
+apply_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.19 0.42 0.08], 'Apply density', ...
+    @(~, ~) rebuild_controls(), 'neutral');
+reset_button = vtseg.ReviewStyle.button(edit_panel, [0.52 0.19 0.42 0.08], 'Reset edits', ...
+    @(~, ~) rebuild_controls(), 'neutral');
+component_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.10 0.88 0.08], 'Remove selected component', ...
+    @(~, ~) toggle_selected_component(), 'danger');
+accept_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.01 0.57 0.07], 'Accept contour edits', ...
     @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary');
-cancel_button = vtseg.ReviewStyle.button(figure_handle, cancel_position, 'Cancel', ...
+cancel_button = vtseg.ReviewStyle.button(edit_panel, [0.67 0.01 0.27 0.07], 'Cancel', ...
     @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral');
+update_handle_control_text();
+rebuild_controls();
 uiwait(figure_handle);
 
 if ~isvalid(figure_handle)
     return;
 end
 action = getappdata(figure_handle, 'vtsegContourEditAction');
+edited_contours = contours;
+kept = false(numel(rois), 1);
+if strcmp(action, 'accept')
+    for index = 1:numel(rois)
+        if ~isempty(rois{index}) && isvalid(rois{index}) && size(rois{index}.Position, 1) >= 3
+            edited_contours(index).Position = rois{index}.Position;
+            kept(index) = true;
+        end
+    end
+end
+for index = 1:numel(rois)
+    if ~isempty(rois{index}) && isvalid(rois{index})
+        delete(rois{index});
+    end
+    if ~isempty(reference_handles{index}) && isvalid(reference_handles{index})
+        delete(reference_handles{index});
+    end
+end
 if isappdata(figure_handle, 'vtsegActiveEditRois')
     rmappdata(figure_handle, 'vtsegActiveEditRois');
 end
-if isvalid(accept_button)
-    delete(accept_button);
+if isappdata(figure_handle, 'vtsegActiveEditReferenceHandles')
+    rmappdata(figure_handle, 'vtsegActiveEditReferenceHandles');
 end
-if isvalid(cancel_button)
-    delete(cancel_button);
+if isappdata(figure_handle, 'vtsegActiveEditKeep')
+    rmappdata(figure_handle, 'vtsegActiveEditKeep');
+end
+if isvalid(edit_panel)
+    delete(edit_panel);
 end
 if ~strcmp(action, 'accept')
-    for index = 1:numel(rois)
-        if ~isempty(rois{index}) && isvalid(rois{index})
-            delete(rois{index});
-        end
-    end
     return;
 end
 
-edited_contours = contours;
-kept = false(numel(rois), 1);
-for index = 1:numel(rois)
-    if ~isempty(rois{index}) && isvalid(rois{index}) && size(rois{index}.Position, 1) >= 3
-        edited_contours(index).Position = rois{index}.Position;
-        kept(index) = true;
-    end
+kept = kept & component_keep;
+[dense_contours, moved] = vtseg.deform_editable_contours(contours, edited_contours);
+if ~moved && all(kept)
+    return;
 end
-edited_contours = edited_contours(kept);
-mask = vtseg.editable_contours_to_mask(edited_contours, size(Im));
+mask = vtseg.editable_contours_to_mask(dense_contours(kept), size(Im));
 did_update = true;
+
+    function rebuild_controls()
+        clear_edit_rois();
+        spacing_mm = get(spacing_slider, 'Value');
+        max_handles = round(get(max_slider, 'Value'));
+        contours = vtseg.mask_to_editable_contours( ...
+            mask, spacing_mm, max_handles, pixel_spacing);
+        component_keep = true(numel(contours), 1);
+        set(component_popup, 'String', component_names(contours), 'Value', 1);
+        rois = cell(numel(contours), 1);
+        reference_handles = cell(numel(contours), 1);
+        primary = primary_component_index(contours);
+        for contour_index = 1:numel(contours)
+            reference_handles{contour_index} = plot_edit_reference( ...
+                ax, contours(contour_index), color, contour_width, contour_index ~= primary);
+            rois{contour_index} = drawpolygon(ax, ...
+                'Position', contours(contour_index).Position, ...
+                'Color', color, 'LineWidth', contour_width, 'FaceAlpha', 0.10);
+        end
+        setappdata(figure_handle, 'vtsegActiveEditRois', rois);
+        setappdata(figure_handle, 'vtsegActiveEditReferenceHandles', reference_handles);
+        setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
+        set_active_edit_roi_visibility(figure_handle, contour_width > 0);
+        update_component_button();
+        update_handle_control_text();
+        vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
+            'Drag handles: %.1f mm spacing, maximum %d per boundary', ...
+            spacing_mm, max_handles));
+    end
+
+    function clear_edit_rois()
+        for roi_index = 1:numel(rois)
+            if ~isempty(rois{roi_index}) && isvalid(rois{roi_index})
+                delete(rois{roi_index});
+            end
+            if ~isempty(reference_handles{roi_index}) && isvalid(reference_handles{roi_index})
+                delete(reference_handles{roi_index});
+            end
+        end
+    end
+
+    function update_handle_control_text(varargin)
+        set(spacing_value, 'String', sprintf('%.1f mm', get(spacing_slider, 'Value')));
+        set(max_value, 'String', sprintf('%d', round(get(max_slider, 'Value'))));
+    end
+
+    function update_component_button(varargin)
+        outer_indices = find(~[contours.IsHole]);
+        if isempty(outer_indices)
+            set(component_button, 'Enable', 'off');
+            return;
+        end
+        contour_index = outer_indices(get(component_popup, 'Value'));
+        if component_keep(contour_index)
+            set(component_button, 'String', 'Remove selected component', ...
+                'BackgroundColor', theme.danger);
+        else
+            set(component_button, 'String', 'Keep selected component', ...
+                'BackgroundColor', theme.primary);
+        end
+    end
+
+    function toggle_selected_component()
+        outer_indices = find(~[contours.IsHole]);
+        if isempty(outer_indices)
+            return;
+        end
+        contour_index = outer_indices(get(component_popup, 'Value'));
+        component_keep(contour_index) = ~component_keep(contour_index);
+        setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
+        set_active_edit_roi_visibility(figure_handle, contour_width > 0);
+        update_component_button();
+    end
 end
 
 function finish_contour_edit(figure_handle, action)
@@ -805,15 +914,84 @@ function set_active_edit_roi_visibility(figure_handle, is_visible)
         return;
     end
     rois = getappdata(figure_handle, 'vtsegActiveEditRois');
+    component_keep = true(numel(rois), 1);
+    if isappdata(figure_handle, 'vtsegActiveEditKeep')
+        component_keep = getappdata(figure_handle, 'vtsegActiveEditKeep');
+    end
     for index = 1:numel(rois)
         if ~isempty(rois{index}) && isvalid(rois{index})
-            if is_visible
+            if is_visible && component_keep(index)
                 set(rois{index}, 'Visible', 'on');
             else
                 set(rois{index}, 'Visible', 'off');
             end
         end
     end
+    if isappdata(figure_handle, 'vtsegActiveEditReferenceHandles')
+        references = getappdata(figure_handle, 'vtsegActiveEditReferenceHandles');
+        for index = 1:numel(references)
+            if ~isempty(references{index}) && isvalid(references{index})
+                if is_visible && component_keep(index)
+                    set(references{index}, 'Visible', 'on');
+                else
+                    set(references{index}, 'Visible', 'off');
+                end
+            end
+        end
+    end
+end
+
+function names = component_names(contours)
+%COMPONENT_NAMES User-facing names for outer, independently removable masks.
+outer_indices = find(~[contours.IsHole]);
+if isempty(outer_indices)
+    names = {'No removable components'};
+    return;
+end
+primary = primary_component_index(contours);
+names = cell(numel(outer_indices), 1);
+disconnected_count = 0;
+for index = 1:numel(outer_indices)
+    contour_index = outer_indices(index);
+    if contour_index == primary
+        names{index} = 'Primary component';
+    else
+        disconnected_count = disconnected_count + 1;
+        names{index} = sprintf('Disconnected component %d', disconnected_count);
+    end
+end
+end
+
+function index = primary_component_index(contours)
+%PRIMARY_COMPONENT_INDEX Largest outer contour is the anatomical main component.
+outer_indices = find(~[contours.IsHole]);
+if isempty(outer_indices)
+    index = 1;
+    return;
+end
+areas = zeros(numel(outer_indices), 1);
+for outer_index = 1:numel(outer_indices)
+    position = contours(outer_indices(outer_index)).DensePosition;
+    areas(outer_index) = abs(polyarea(position(:, 1), position(:, 2)));
+end
+[~, largest] = max(areas);
+index = outer_indices(largest);
+end
+
+function handle = plot_edit_reference(ax, contour_record, color, line_width, is_island)
+%PLOT_EDIT_REFERENCE Draw dense source boundaries behind sparse draggable ROIs.
+position = contour_record.DensePosition;
+if isempty(position)
+    handle = gobjects(0);
+    return;
+end
+line_style = '-';
+if is_island
+    line_style = '--';
+end
+handle = plot(ax, [position(:, 1); position(1, 1)], ...
+    [position(:, 2); position(1, 2)], 'Color', color, ...
+    'LineStyle', line_style, 'LineWidth', max(0.1, 0.65 * line_width));
 end
 
 function mask = redraw_mask_components(ax, Im, color, gs_range)
@@ -1318,4 +1496,24 @@ function Im = read_slice_image(path_image, file_name)
     f = strcat(path_image, file_name);
     f_info = dicominfo(f);
     Im = vtseg.read_dicom_image(f_info);
+end
+
+function spacing = editable_pixel_spacing(path_image, file_name)
+%EDITABLE_PIXEL_SPACING Return [row column] spacing for physical edit handles.
+spacing = [1, 1];
+try
+    info = dicominfo(fullfile(path_image, file_name));
+    if isfield(info, 'PixelSpacing')
+        candidate = double(info.PixelSpacing(:)');
+    elseif isfield(info, 'ImagerPixelSpacing')
+        candidate = double(info.ImagerPixelSpacing(:)');
+    else
+        candidate = [];
+    end
+    if numel(candidate) == 2 && all(isfinite(candidate)) && all(candidate > 0)
+        spacing = candidate;
+    end
+catch
+    % A missing metadata field should not block reviewing an otherwise usable mask.
+end
 end

@@ -38,3 +38,44 @@ verifyEqual(testCase, numel(contours), 1);
 verifyLessThanOrEqual(testCase, size(contours(1).Position, 1), 24);
 verifyGreaterThanOrEqual(testCase, size(contours(1).Position, 1), 3);
 end
+
+function testPhysicalSpacingProducesComparableControlDensity(testCase)
+[x_mri, y_mri] = meshgrid(1:120, 1:120);
+mri_mask = (x_mri - 60) .^ 2 + (y_mri - 60) .^ 2 <= 30 ^ 2;
+[x_ct, y_ct] = meshgrid(1:240, 1:240);
+ct_mask = (x_ct - 120) .^ 2 + (y_ct - 120) .^ 2 <= 60 ^ 2;
+
+% Both circles have a 30 mm radius. CT has twice the pixel resolution.
+mri = vtseg.mask_to_editable_contours(mri_mask, 8, 96, [1, 1]);
+ct = vtseg.mask_to_editable_contours(ct_mask, 8, 96, [0.5, 0.5]);
+
+verifyEqual(testCase, numel(mri), 1);
+verifyEqual(testCase, numel(ct), 1);
+verifyLessThanOrEqual(testCase, ...
+    abs(size(mri.Position, 1) - size(ct.Position, 1)), 1);
+end
+
+function testUnmovedControlsKeepDenseBoundary(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 32 ^ 2;
+controls = vtseg.mask_to_editable_contours(mask, 8, 64, [0.5, 0.5]);
+
+[deformed, changed] = vtseg.deform_editable_contours(controls, controls);
+
+verifyFalse(testCase, changed);
+verifyEqual(testCase, deformed.Position, controls.DensePosition);
+end
+
+function testMovedControlDeformsDenseBoundary(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 32 ^ 2;
+controls = vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1]);
+edited = controls;
+edited.Position(1, :) = edited.Position(1, :) + [6, -2];
+
+[deformed, changed] = vtseg.deform_editable_contours(controls, edited);
+
+verifyTrue(testCase, changed);
+verifyEqual(testCase, size(deformed.Position), size(controls.DensePosition));
+verifyGreaterThan(testCase, max(abs(deformed.Position(:) - controls.DensePosition(:))), 0);
+end

@@ -434,9 +434,18 @@ out, and the other contours on the image thin, so it is clear which outline
 the choice applies to:
 
 - `keep` leaves that structure exactly as imported.
-- `edit` initializes draggable polygon vertices from the existing mask. All
-  disconnected components, including RV/RVOT components, remain available;
-  move the needed points and click **Accept contour edits**.
+- `edit` initializes physical-space draggable controls from the existing mask.
+  By default, they are 8 mm apart with at most 64 controls per boundary, so a
+  fine CT MPR does not create more handles merely because it has smaller
+  voxels. The edit panel provides **Handle spacing**, **Maximum handles**, and
+  **Apply density**; use **Reset edits** to return to the imported boundary.
+  The largest outer boundary is marked as the primary component. Smaller
+  disconnected components are dashed and can be explicitly removed or restored
+  with the component selector. No component is removed automatically.
+- accepting without moving a control preserves the imported mask exactly. When
+  a control moves, MATLAB smoothly deforms the dense original boundary before
+  rasterizing it, rather than replacing the mask with the sparse control
+  polygon.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the slice.

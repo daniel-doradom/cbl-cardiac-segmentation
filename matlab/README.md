@@ -41,12 +41,12 @@ vtseg.main_ct_tetmesh(ctCaseDirectory, []);
 CT DICOMs are displayed after RescaleSlope/RescaleIntercept is applied (HU),
 using the DICOM Window Center/Width as the initial range when supplied.
 
-Use `vtseg.visualize_bivme_lge_masks(caseDirectory, [])` for the interactive
-slice/mask review. It first prompts for one rectangular display crop on a
-representative slice; that ROI is reused for the slider, mask-fill toggle, and
-opacity control, correction window, and final overview figures without changing
-the source DICOMs or masks. MATLAB corrections are authoritative for mesh
-generation.
+Both entry points first ask for one rectangular display crop on a
+representative slice, then open the correction window. The crop is reused by
+the correction window and the final overview figures without changing the
+source DICOMs or masks. The read-only slice viewer with fill and opacity
+controls is a separate tool: `vtseg.visualize_bivme_lge_masks(caseDirectory, [])`.
+MATLAB corrections are authoritative for mesh generation.
 
 During correction, use the in-window **Previous**, **Keep / Next**, and
 **Modify** controls. Each LV, RV, and epicardial mask then supports `keep`,
@@ -66,10 +66,8 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   a crescent's smooth walls, raise **Largest gap** or **Detail tolerance**;
   the tips keep their handles either way. A component with twelve or fewer
   boundary pixels keeps every one of them as a handle so it cannot vanish;
-  such a cluster is best removed from the **Components** view rather than
-  edited. The separate **Components** view lets
-  the reviewer remove or restore a disconnected component. The primary
-  component is solid; disconnected components are dashed.
+  if such a cluster is unwanted, `redraw` the structure without it. The
+  primary component is drawn solid; disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.

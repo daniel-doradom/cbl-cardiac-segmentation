@@ -414,13 +414,14 @@ caseDirectory = fullfile(repoRoot, 'results', 'case-mri', 'manual', ...
 vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);
 ```
 
-The initial interactive viewer asks for one rectangular display ROI on a
-representative slice. Draw the rectangle, then double-click inside it to
-confirm. The crop is display-only: it does not crop DICOMs or masks. The same
-ROI is reused for the slice slider, fill toggle, fill-opacity slider,
-contour-width slider, correction view, and final raw/contour overview figures.
-Use **Continue to correction** to leave this viewer. Its ignored case-local
-record is `seg/review_display_crop.json`.
+The first window asks for one rectangular display crop on a representative
+slice. Draw the rectangle, then double-click inside it to confirm. The crop is
+display-only: it does not crop DICOMs or masks. It is reused by the correction
+window and the final raw/contour overview figures, and its ignored case-local
+record is `seg/review_display_crop.json`. The correction window opens next.
+The read-only slice viewer with fill and opacity controls is not part of this
+script; open it separately with `vtseg.visualize_bivme_lge_masks(caseDirectory, [])`
+or through `vtseg.visualize_bivme_lge_results`.
 
 In the **Mask correction: review slices** window (its title bar reads
 `FigN: Mask correction: review slices`, N being MATLAB's figure number), use
@@ -449,12 +450,10 @@ the choice applies to:
   about every 15 mm, so to thin a crescent's walls raise **Largest gap** or
   **Detail tolerance**; the tips keep their handles either way. A component of
   twelve or fewer boundary pixels keeps all of them as handles so it cannot
-  vanish; if such a cluster is unwanted, remove it from **Components**. Either
-  mode keeps every handle on the imported boundary and changes nothing until
-  a handle is moved and accepted. Select **Components** to remove or restore a
-  disconnected component. The largest outer boundary is the primary component;
-  smaller disconnected components are dashed. No component is removed
-  automatically.
+  vanish; if such a cluster is unwanted, `redraw` the structure without it.
+  Either mode keeps every handle on the imported boundary and changes nothing
+  until a handle is moved and accepted. The largest outer boundary is drawn
+  solid; smaller disconnected components are dashed.
 - accepting without moving a control preserves the imported mask exactly. When
   a control moves, MATLAB smoothly deforms the dense original boundary before
   rasterizing it, rather than replacing the mask with the sparse control

@@ -752,7 +752,6 @@ hold(ax, 'on');
 
 figure_handle = ancestor(ax, 'figure');
 setappdata(figure_handle, 'vtsegContourEditAction', '');
-component_keep = true(numel(contours), 1);
 rois = cell(numel(contours), 1);
 reference_handles = cell(numel(contours), 1);
 layout = review_layout();
@@ -767,8 +766,6 @@ spacing_label = gobjects(0);
 spacing_value = gobjects(0);
 tolerance_value = gobjects(0);
 max_value = gobjects(0);
-component_popup = gobjects(0);
-component_button = gobjects(0);
 rebuild_controls();
 uiwait(figure_handle);
 
@@ -800,9 +797,6 @@ end
 if isappdata(figure_handle, 'vtsegActiveEditReferenceHandles')
     rmappdata(figure_handle, 'vtsegActiveEditReferenceHandles');
 end
-if isappdata(figure_handle, 'vtsegActiveEditKeep')
-    rmappdata(figure_handle, 'vtsegActiveEditKeep');
-end
 if isvalid(edit_panel)
     delete(edit_panel);
 end
@@ -810,7 +804,6 @@ if ~strcmp(action, 'accept')
     return;
 end
 
-kept = kept & component_keep;
 [dense_contours, moved] = vtseg.deform_editable_contours(contours, edited_contours);
 if ~moved && all(kept)
     return;
@@ -833,7 +826,6 @@ did_update = true;
         update_handle_control_text();
         contours = vtseg.mask_to_editable_contours( ...
             mask, spacing_mm, max_handles, pixel_spacing, edit_options());
-        component_keep = true(numel(contours), 1);
         rois = cell(numel(contours), 1);
         reference_handles = cell(numel(contours), 1);
         primary = primary_component_index(contours);
@@ -846,7 +838,6 @@ did_update = true;
         end
         setappdata(figure_handle, 'vtsegActiveEditRois', rois);
         setappdata(figure_handle, 'vtsegActiveEditReferenceHandles', reference_handles);
-        setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
         set_active_edit_roi_visibility(figure_handle, contour_width > 0);
         show_edit_home();
         if strcmp(handle_mode, 'simplify')
@@ -945,38 +936,6 @@ did_update = true;
         end
     end
 
-    function update_component_button(varargin)
-        if isempty(component_popup) || ~isvalid(component_popup) || ...
-                isempty(component_button) || ~isvalid(component_button)
-            return;
-        end
-        outer_indices = find(~[contours.IsHole]);
-        if isempty(outer_indices)
-            set(component_button, 'Enable', 'off');
-            return;
-        end
-        contour_index = outer_indices(get(component_popup, 'Value'));
-        if component_keep(contour_index)
-            set(component_button, 'String', 'Remove selected component', ...
-                'BackgroundColor', theme.danger);
-        else
-            set(component_button, 'String', 'Keep selected component', ...
-                'BackgroundColor', theme.primary);
-        end
-    end
-
-    function toggle_selected_component()
-        outer_indices = find(~[contours.IsHole]);
-        if isempty(outer_indices)
-            return;
-        end
-        contour_index = outer_indices(get(component_popup, 'Value'));
-        component_keep(contour_index) = ~component_keep(contour_index);
-        setappdata(figure_handle, 'vtsegActiveEditKeep', component_keep);
-        set_active_edit_roi_visibility(figure_handle, contour_width > 0);
-        update_component_button();
-    end
-
     function clear_edit_controls()
         for control_index = 1:numel(edit_controls)
             if isvalid(edit_controls(control_index))
@@ -992,8 +951,6 @@ did_update = true;
         spacing_value = gobjects(0);
         tolerance_value = gobjects(0);
         max_value = gobjects(0);
-        component_popup = gobjects(0);
-        component_button = gobjects(0);
     end
 
     function add_edit_control(control)
@@ -1004,13 +961,11 @@ did_update = true;
         clear_edit_controls();
         add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.74 0.88 0.17], ...
             'Drag the visible handles to adjust this existing contour.', 'left', true));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.56 0.88 0.12], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.52 0.88 0.14], ...
             density_summary(), @(~, ~) show_density_controls(), 'neutral'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.41 0.88 0.12], ...
-            'Components', @(~, ~) show_component_controls(), 'neutral'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.21 0.88 0.13], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.25 0.88 0.15], ...
             'Accept contour edits', @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.10], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.12], ...
             'Cancel', @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral'));
     end
 
@@ -1057,22 +1012,6 @@ did_update = true;
         update_handle_control_text();
     end
 
-    function show_component_controls()
-        clear_edit_controls();
-        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.79 0.88 0.10], ...
-            'Choose an outer contour to keep or remove.', 'left', true));
-        component_popup = uicontrol(edit_panel, 'Style', 'popupmenu', 'Units', 'normalized', ...
-            'Position', [0.06 0.63 0.88 0.10], 'String', component_names(contours), ...
-            'BackgroundColor', theme.field, 'ForegroundColor', theme.text, 'FontWeight', 'bold', ...
-            'Callback', @update_component_button);
-        add_edit_control(component_popup);
-        component_button = vtseg.ReviewStyle.button(edit_panel, [0.06 0.45 0.88 0.11], ...
-            'Remove selected component', @(~, ~) toggle_selected_component(), 'danger');
-        add_edit_control(component_button);
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.10], ...
-            'Back to edit', @(~, ~) show_edit_home(), 'neutral'));
-        update_component_button();
-    end
 end
 
 function finish_contour_edit(figure_handle, action)
@@ -1087,13 +1026,9 @@ function set_active_edit_roi_visibility(figure_handle, is_visible)
         return;
     end
     rois = getappdata(figure_handle, 'vtsegActiveEditRois');
-    component_keep = true(numel(rois), 1);
-    if isappdata(figure_handle, 'vtsegActiveEditKeep')
-        component_keep = getappdata(figure_handle, 'vtsegActiveEditKeep');
-    end
     for index = 1:numel(rois)
         if ~isempty(rois{index}) && isvalid(rois{index})
-            if is_visible && component_keep(index)
+            if is_visible
                 set(rois{index}, 'Visible', 'on');
             else
                 set(rois{index}, 'Visible', 'off');
@@ -1104,7 +1039,7 @@ function set_active_edit_roi_visibility(figure_handle, is_visible)
         references = getappdata(figure_handle, 'vtsegActiveEditReferenceHandles');
         for index = 1:numel(references)
             if ~isempty(references{index}) && isvalid(references{index})
-                if is_visible && component_keep(index)
+                if is_visible
                     set(references{index}, 'Visible', 'on');
                 else
                     set(references{index}, 'Visible', 'off');
@@ -1112,27 +1047,6 @@ function set_active_edit_roi_visibility(figure_handle, is_visible)
             end
         end
     end
-end
-
-function names = component_names(contours)
-%COMPONENT_NAMES User-facing names for outer, independently removable masks.
-outer_indices = find(~[contours.IsHole]);
-if isempty(outer_indices)
-    names = {'No removable components'};
-    return;
-end
-primary = primary_component_index(contours);
-names = cell(numel(outer_indices), 1);
-disconnected_count = 0;
-for index = 1:numel(outer_indices)
-    contour_index = outer_indices(index);
-    if contour_index == primary
-        names{index} = 'Primary component';
-    else
-        disconnected_count = disconnected_count + 1;
-        names{index} = sprintf('Disconnected component %d', disconnected_count);
-    end
-end
 end
 
 function index = primary_component_index(contours)

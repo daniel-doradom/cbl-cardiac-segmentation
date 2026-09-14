@@ -44,10 +44,11 @@ if isempty(gs_range)
     gs_range = vtseg.dicom_display_range(fullfile(raw_path, first_raw(1).name));
 end
 
-% The shared viewer/reviewer reads DICOM RescaleSlope/Intercept. For CT it
-% therefore displays Hounsfield units and uses DICOM window metadata when set.
-review_figure = vtseg.visualize_bivme_lge_masks(main_path, gs_range);
-uiwait(review_figure);
+% The crop and correction windows read DICOM RescaleSlope/Intercept, so for
+% CT they display Hounsfield units and use DICOM window metadata when set.
+% Only the display crop is asked for here; the slice viewer is a separate
+% tool (vtseg.visualize_bivme_lge_masks).
+vtseg.define_review_crop(main_path, gs_range);
 vtseg.readdata(raw_path, seg_path);
 vtseg.ventriclesSegmentation_v2(raw_path, seg_path, gs_range);
 vtseg.Gen_mesh(seg_path, mesh_path);

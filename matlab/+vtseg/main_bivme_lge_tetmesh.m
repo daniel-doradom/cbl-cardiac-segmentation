@@ -40,10 +40,10 @@ if isempty(dir(fullfile(raw_path, '*.dcm')))
     error('No DICOM files found in raw/. Run export-matlab-seg before this script.');
 end
 
-% Review the exported masks and record any desired base-to-apex range before
-% correction. Close the viewer to continue to the interactive correction UI.
-review_figure = vtseg.visualize_bivme_lge_masks(main_path, gs_range);
-uiwait(review_figure);
+% One display crop, drawn once, is shared by the correction window and the
+% final overview figures. The slice viewer with fill and opacity controls is
+% not part of this script; open it with vtseg.visualize_bivme_lge_masks.
+vtseg.define_review_crop(main_path, gs_range);
 
 % Rebuild geometry from the exact DICOM stack paired with the imported masks.
 vtseg.readdata(raw_path, seg_path);

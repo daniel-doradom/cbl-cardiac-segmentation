@@ -10,42 +10,9 @@ if nargin < 2 || isempty(gs_range)
     gs_range = [];
 end
 
-raw_path = fullfile(main_path, 'raw');
-seg_path = fullfile(main_path, 'seg');
-files = dir(fullfile(raw_path, '*.dcm'));
-if isempty(files)
-    error('No DICOM files found in %s.', raw_path);
-end
-
-Lendo = load_required_mask(seg_path, 'Lendo');
-Rendo = load_required_mask(seg_path, 'Rendo');
-Epi = load_required_mask(seg_path, 'Epi');
-myocardium = load_required_mask(seg_path, 'myocardium');
-masks = {logical(Lendo), logical(Rendo), logical(Epi), logical(myocardium)};
-names = {'LV blood pool', 'RV blood pool', 'Epicardium', 'Myocardium'};
-colors = [0.80 0.20 0.20; 0.20 0.70 0.95; 0.20 0.85 0.35; 1.00 0.75 0.10];
-
+[files, images, masks, names, colors, slice_metadata] = vtseg.load_review_case(main_path);
 slice_count = numel(files);
-slice_metadata = load_slice_metadata(seg_path, files, slice_count);
-for index = 1:numel(masks)
-    if ndims(masks{index}) ~= 3 || size(masks{index}, 3) ~= slice_count
-        error('%s stack does not match the raw DICOM slice count.', names{index});
-    end
-end
-
-first_image = vtseg.read_dicom_image(fullfile(raw_path, files(1).name));
-images = zeros([size(first_image), slice_count]);
-images(:, :, 1) = first_image;
-for index = 2:slice_count
-    current_image = vtseg.read_dicom_image(fullfile(raw_path, files(index).name));
-    if ~isequal(size(current_image), size(first_image))
-        error('DICOM image dimensions are inconsistent in raw/.');
-    end
-    images(:, :, index) = current_image;
-end
-
-[row_range, column_range] = select_display_crop(images, masks, colors, gs_range);
-write_display_crop(seg_path, row_range, column_range, size(images));
+[row_range, column_range] = vtseg.define_review_crop(main_path, gs_range, images, masks, colors);
 
 % Same layout as the mask correction window: header bar, image on the left
 % with its slice slider underneath, settings / legend / slice info on the right.
@@ -177,113 +144,6 @@ refresh_view();
         hold(ax, 'off');
         drawnow;
     end
-end
-
-function [row_range, column_range] = select_display_crop(images, masks, colors, gs_range)
-%SELECT_DISPLAY_CROP Define one display-only crop shared by every review slice.
-epicardium = masks{3};
-areas = squeeze(sum(sum(epicardium, 1), 2));
-[~, reference_slice] = max(areas);
-
-height = size(images, 1);
-width = size(images, 2);
-row_range = 1:height;
-column_range = 1:width;
-
-selection_figure = vtseg.ReviewStyle.newFigure('Mask review: define crop', ...
-    'Units', 'normalized', 'Position', [0.15 0.12 0.70 0.78]);
-selection_axes = axes('Parent', selection_figure, 'Units', 'normalized', ...
-    'Position', [0.03 0.03 0.94 0.87]);
-imshow(images(:, :, reference_slice), gs_range, 'Parent', selection_axes);
-colormap(selection_axes, gray(256));
-hold(selection_axes, 'on');
-for index = 1:numel(masks)
-    current_mask = masks{index}(:, :, reference_slice);
-    if any(current_mask(:)) && any(~current_mask(:))
-        contour(selection_axes, current_mask, [0.5 0.5], ...
-            'Color', colors(index, :), 'LineWidth', 1.4);
-    end
-end
-vtseg.ReviewStyle.axesTitle(selection_axes, sprintf(['Draw the review crop on slice %d, ' ...
-    'then double-click inside it. The crop affects display only.'], reference_slice));
-
-roi = drawrectangle(selection_axes, 'Color', [1.00 0.75 0.10], 'LineWidth', 1.4);
-wait(roi);
-if isvalid(roi) && ~isempty(roi.Position)
-    position = round(roi.Position);
-    first_column = max(1, position(1));
-    first_row = max(1, position(2));
-    last_column = min(width, first_column + max(1, position(3)) - 1);
-    last_row = min(height, first_row + max(1, position(4)) - 1);
-    column_range = first_column:last_column;
-    row_range = first_row:last_row;
-end
-if isvalid(selection_figure)
-    close(selection_figure);
-end
-end
-
-function write_display_crop(seg_path, row_range, column_range, image_size)
-crop = struct( ...
-    'schema_version', 1, ...
-    'row_start', row_range(1), ...
-    'row_end', row_range(end), ...
-    'column_start', column_range(1), ...
-    'column_end', column_range(end), ...
-    'image_height', image_size(1), ...
-    'image_width', image_size(2));
-fid = fopen(fullfile(seg_path, 'review_display_crop.json'), 'w');
-if fid < 0
-    warning('vtseg:DisplayCropNotSaved', 'Unable to save the display crop for downstream review plots.');
-    return;
-end
-cleanup = onCleanup(@() fclose(fid));
-fprintf(fid, '%s\n', jsonencode(crop));
-end
-
-function metadata = load_slice_metadata(seg_path, files, slice_count)
-metadata = repmat(struct('dicom_file', '', 'base_to_apex_slice', 'not recorded', ...
-    'reference_index', 'not recorded'), slice_count, 1);
-for index = 1:slice_count
-    metadata(index).dicom_file = files(index).name;
-end
-
-manifest_path = fullfile(seg_path, 'vtseg_export_manifest.json');
-if ~isfile(manifest_path)
-    % Compatibility with MATLAB exports produced before the generic manifest.
-    manifest_path = fullfile(seg_path, 'bivme_export_manifest.json');
-end
-if ~isfile(manifest_path)
-    return;
-end
-manifest = jsondecode(fileread(manifest_path));
-if ~isfield(manifest, 'slices') || numel(manifest.slices) ~= slice_count
-    return;
-end
-for index = 1:slice_count
-    entry = manifest.slices(index);
-    if isfield(entry, 'dicom_file')
-        metadata(index).dicom_file = entry.dicom_file;
-    end
-    if isfield(entry, 'base_to_apex_reference_slice')
-        metadata(index).base_to_apex_slice = num2str(entry.base_to_apex_reference_slice);
-    end
-    if isfield(entry, 'reference_volume_index')
-        metadata(index).reference_index = num2str(entry.reference_volume_index);
-    end
-end
-end
-
-function value = load_required_mask(seg_path, variable_name)
-path = fullfile(seg_path, [variable_name '.mat']);
-if ~isfile(path)
-    error('Missing mask file: %s', path);
-end
-loaded = load(path, variable_name);
-if ~isfield(loaded, variable_name)
-    error('Mask file does not contain %s.', variable_name);
-end
-value = loaded.(variable_name);
 end
 
 function steps = slider_steps(slice_count)

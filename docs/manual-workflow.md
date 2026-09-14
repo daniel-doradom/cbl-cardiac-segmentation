@@ -93,14 +93,17 @@ preserves the raw result and prevents the pipeline's overwrite protection from
 blocking a distinct experiment.
 
 Use `results/best/<case>` only after the automatic masks and native LGE
-alignment have been inspected in 3D Slicer and selected for manual work. Copy
-the accepted candidate into `best` before exporting MATLAB slices; for example:
+alignment have been inspected in 3D Slicer and selected for manual work.
+`best` holds symlinks, not copies: point the case name at the accepted run
+before exporting MATLAB slices, for example:
 
 ```bash
-cp -a results/legacy/nsha03-post-v1 results/best/nsha03-post
+ln -sfn ../legacy/nsha03-post-mri-v1 results/best/nsha03-post
 ```
 
-Do not run a new automatic segmentation directly inside `results/best/`.
+CT picks use the `-ct` suffix (`results/best/nsha04-ct`). Nothing is
+duplicated, and a better run later is adopted by moving the link. Do not run a
+new automatic segmentation directly inside `results/best/`.
 
 On the server, from the repository root:
 
@@ -591,38 +594,36 @@ Open both pairs in Slicer, always loading image and labels from the same pair:
 | `review/2_native_ct_mapped/` | Native full-CT TotalSegmentator masks resampled onto that exact MPR grid |
 
 Both pairs use the same MPR volume geometry. Select the candidate manually;
-there is no automatic winner. Then promote it to the only location used for CT
-manual work:
+there is no automatic winner. The rule adopted after reviewing ten cases: the
+native CT segmentation mapped onto the MPR is better than segmenting the MPR
+directly, so take `native_ct_mapped` unless it is empty or unusable, and only
+then take the direct `totalsegmentator` set.
+
+Record the pick with a symlink, as for MRI. Both mask sets stay inside the run,
+so the export reads from the chosen one and writes next to it:
 
 ```bash
 bestCase='results/best/nsha04-ct'
-PYTHONPATH=src python -m vtseg promote-ct-candidate "$mprCase" --candidate direct-mpr --output "$bestCase"
-PYTHONPATH=src python -m vtseg collect-review "$bestCase"
-PYTHONPATH=src python -m vtseg preview-matlab-slices "$bestCase/segmentation/selected/normalized" --reference "$bestCase"
-PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/selected/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
+ln -sfn "../legacy/$(basename "$mprCase")" "$bestCase"
+chosen=native_ct_mapped     # or totalsegmentator for a direct pick
+PYTHONPATH=src python -m vtseg preview-matlab-slices "$bestCase/segmentation/$chosen/normalized" --reference "$bestCase" --slice-order reverse-reference
+PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/$chosen/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-native-mapped-kBASE-APEX-COUNTslices" --slicer-approved --slice-order reverse-reference --start-slice $((BASE+1)) --end-slice $((APEX+1)) --slices COUNT
 ```
 
-One-line equivalents:
+`preview-matlab-slices` lists the one-based positions accepted by
+`--start-slice` and `--end-slice` alongside zero-based NIfTI reference indices.
 
-```bash
-PYTHONPATH=src python -m vtseg promote-ct-candidate "$mprCase" --candidate direct-mpr --output "$bestCase"
-PYTHONPATH=src python -m vtseg collect-review "$bestCase"
-PYTHONPATH=src python -m vtseg preview-matlab-slices "$bestCase/segmentation/selected/normalized" --reference "$bestCase"
-PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/selected/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-source-START-END-COUNTslices" --slicer-approved --start-slice START --end-slice END --slices COUNT
-```
-
-Use `--candidate native-mapped` when that is the Slicer-approved result. Run
-`collect-review` on the promoted case to create its `review/1_selected_ct/` pair.
-`preview-matlab-slices` shows the one-based base-to-apex positions accepted by
-`--start-slice` and `--end-slice`, alongside zero-based NIfTI reference indices.
-Select the intended range from that listing, then visually confirm the two
-exported endpoints; intermediate slices are evenly spaced.
-
-If Slicer shows the approved short-axis stack in the opposite K direction from
-the stored NIfTI z order, use `--slice-order reverse-reference` for both preview
-and export. Its one-based selection position is `N - reference_z_index`, where
-`N` is the number of NIfTI slices. Verify the Slicer K-to-NIfTI mapping from
-the image geometry for that case; do not assume every Slicer load reverses K.
+**Slicer K versus stored z.** For every Weasis MPR checked so far (ten cases),
+3D Slicer's K index runs opposite to the stored NIfTI z order, so a base and
+apex read off Slicer as K values become positions `K + 1` in
+`--slice-order reverse-reference` (the position is `N - reference_z_index`).
+Passing the same numbers in `reference` order lands on empty slices and exports
+masks with nothing in them. Do not assume this for a new export: confirm it by
+checking that the mask is present at both chosen positions in the preview, and
+confirm after exporting that the manifest's per-slice voxel counts are non-zero
+at both ends. Prefer endpoints that carry real sections over the first slice
+with any voxel. `promote-ct-candidate` still exists for making a standalone
+copied case; the symlink convention above is what `results/best` uses.
 
 CT exports contain `raw/` short-axis CT DICOMs, `seg/Lendo.mat`, `Rendo.mat`,
 `Epi.mat`, `myocardium.mat`, and `seg/vtseg_export_manifest.json`. They retain
@@ -641,7 +642,7 @@ repoRoot = '/path/to/vt-segmentation-eval';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg();
 caseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...
-    'manual', 'matlab-source-START-END-COUNTslices');
+    'manual', 'matlab-native-mapped-kBASE-APEX-COUNTslices');
 vtseg.main_ct_tetmesh(caseDirectory, []);
 ```
 

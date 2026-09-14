@@ -66,9 +66,12 @@ command requires matching Frame of Reference UID and will fail rather than
 estimate a registration. A Weasis `DERIVED/SECONDARY/MPR` export may receive a
 new Study Instance UID, so that UID is recorded as a warning rather than used
 as a rejection criterion. `vtseg collect-review <mpr-case>`
-creates the two Slicer-ready comparisons. Promote only the reviewer-selected
-candidate with `vtseg promote-ct-candidate`; see the manual workflow runbook
-for the complete commands and MATLAB export.
+creates the two Slicer-ready comparisons. Across the ten NSHA cases reviewed so
+far the native segmentation mapped onto the MPR was the better candidate; the
+direct MPR segmentation is the fallback when the mapping produces nothing.
+Record the reviewer's pick as a `results/best/<case>-ct` symlink to the MPR run
+and export from the chosen mask set; see the manual workflow runbook for the
+commands, including the Slicer-K-to-NIfTI-z order that the export needs.
 
 ## Validation boundary
 

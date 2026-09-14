@@ -170,3 +170,48 @@ verifyError(testCase, @() vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1], .
 verifyError(testCase, @() vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1], ...
     struct('mode', 'simplify', 'tolerance', 0)), 'vtseg:EditableContourTolerance');
 end
+
+function testDeletingHandlesWithoutMovingChangesNothing(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 32 ^ 2;
+controls = vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1]);
+edited = controls;
+edited.Position([2, 5, 9], :) = [];     % three handles deleted in the editor
+
+[deformed, changed] = vtseg.deform_editable_contours(controls, edited);
+
+verifyFalse(testCase, changed);
+verifyEqual(testCase, deformed.Position, controls.DensePosition);
+end
+
+function testDeletingAndMovingHandlesDeformsBoundary(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 32 ^ 2;
+controls = vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1]);
+edited = controls;
+edited.Position(3, :) = [];
+edited.Position(1, :) = edited.Position(1, :) + [6, -2];
+
+[deformed, changed] = vtseg.deform_editable_contours(controls, edited);
+
+verifyTrue(testCase, changed);
+verifyEqual(testCase, size(deformed.Position), size(controls.DensePosition));
+verifyGreaterThan(testCase, max(abs(deformed.Position(:) - controls.DensePosition(:))), 0);
+end
+
+function testAddingAHandleDeformsBoundary(testCase)
+[columns, rows] = meshgrid(1:100, 1:100);
+mask = (columns - 50) .^ 2 + (rows - 50) .^ 2 <= 32 ^ 2;
+controls = vtseg.mask_to_editable_contours(mask, 8, 64, [1, 1]);
+edited = controls;
+% a new vertex halfway between the first two handles, pushed 5 px outward
+midpoint = mean(controls.Position(1:2, :), 1);
+outward = (midpoint - [50, 50]) / norm(midpoint - [50, 50]);
+edited.Position = [controls.Position(1, :); midpoint + 5 * outward; controls.Position(2:end, :)];
+
+[deformed, changed] = vtseg.deform_editable_contours(controls, edited);
+
+verifyTrue(testCase, changed);
+verifyEqual(testCase, size(deformed.Position), size(controls.DensePosition));
+verifyGreaterThan(testCase, max(abs(deformed.Position(:) - controls.DensePosition(:))), 1);
+end

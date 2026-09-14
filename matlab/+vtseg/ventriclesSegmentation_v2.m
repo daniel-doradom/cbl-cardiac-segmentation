@@ -804,7 +804,17 @@ if ~strcmp(action, 'accept')
     return;
 end
 
-[dense_contours, moved] = vtseg.deform_editable_contours(contours, edited_contours);
+try
+    [dense_contours, moved] = vtseg.deform_editable_contours(contours, edited_contours);
+catch deform_error
+    % Never let an edit take the whole review session down. Fall back to the
+    % edited polygons themselves and say so.
+    warning('vtseg:EditDeformFallback', ...
+        'Could not deform the dense boundary (%s). Using the edited polygons directly.', ...
+        deform_error.message);
+    dense_contours = edited_contours;
+    moved = true;
+end
 if ~moved && all(kept)
     return;
 end

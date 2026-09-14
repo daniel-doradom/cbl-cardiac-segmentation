@@ -439,6 +439,8 @@ the choice applies to:
 
 - `keep` leaves that structure exactly as imported.
 - `edit` initializes physical-space draggable controls from the existing mask.
+  Handles can be dragged, added or deleted (right-click menu); deleting handles
+  without moving any leaves the mask unchanged.
   By default, they are 8 mm apart with at most 64 controls per boundary, so a
   fine CT MPR does not create more handles merely because it has smaller
   voxels. Select **Handle density** for **Simplify handles**, **Handle

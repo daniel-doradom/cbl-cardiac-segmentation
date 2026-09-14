@@ -52,7 +52,9 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
 **Modify** controls. Each LV, RV, and epicardial mask then supports `keep`,
 `edit`, `redraw`, and `clear`:
 
-- `edit` initializes movable controls from each existing mask boundary. The
+- `edit` initializes movable controls from each existing mask boundary. Drag
+  them, or add and delete vertices from the polygon's right-click menu;
+  deleting handles without moving any leaves the mask unchanged. The
   default is 8 mm between controls and at most 64 controls per boundary,
   independent of CT or MRI pixel resolution. The compact **Handle density**
   view exposes **Simplify handles**, **Handle spacing**, **Detail tolerance**,

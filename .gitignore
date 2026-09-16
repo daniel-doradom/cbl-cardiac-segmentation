@@ -60,3 +60,6 @@ build/
 .idea/
 .vscode/
 *.swp
+
+# Local 3D Slicer scene files (.mrml) that reference results/; never shared
+slicer/

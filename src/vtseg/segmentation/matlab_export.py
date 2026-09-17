@@ -167,8 +167,19 @@ def export_matlab_case(
     end_slice: int | None = None,
     slice_order: str = "base_to_apex",
     slicer_approved: bool = False,
+    keep_original: bool = True,
     repo_root: str | Path | None = None,
 ) -> dict[str, Any]:
+    """Export canonical masks as a MATLAB meshing case.
+
+    With ``keep_original`` (the default) the export folder holds two copies of
+    the case: ``work/``, where MATLAB reads, corrects and meshes, and
+    ``original/``, a read-only copy of the exported masks and DICOMs that
+    nothing later touches. Keeping the pristine export beside the working copy
+    means a manual stage can always be compared with, or restarted from, what
+    was exported, and a two-way file sync never sees the same file edited on
+    both sides. ``keep_original=False`` writes the single flat layout.
+    """
     masks_path = Path(mask_directory).expanduser().resolve()
     reference = Path(reference_directory).expanduser().resolve()
     output = Path(output_directory).expanduser().resolve()
@@ -178,6 +189,7 @@ def export_matlab_case(
         )
     if output.exists():
         raise NormalizationError(f"refusing to overwrite existing MATLAB case: {output}")
+    case_root = output / "work" if keep_original else output
 
     selection_path = reference / "source" / "selected_series.json"
     image_path = reference / "volume" / "image.nii.gz"
@@ -237,10 +249,11 @@ def export_matlab_case(
     # order, independent of the original export's filenames or InstanceNumber.
     ordered = indices
 
-    raw_dir = output / "raw"
-    seg_dir = output / "seg"
+    raw_dir = case_root / "raw"
+    seg_dir = case_root / "seg"
     for directory in (
-        raw_dir, seg_dir, output / "mesh", output / "remesh", output / "global", output / "visualizations"
+        raw_dir, seg_dir, case_root / "mesh", case_root / "remesh", case_root / "global",
+        case_root / "visualizations",
     ):
         directory.mkdir(parents=True)
     if output.name == "matlab":
@@ -316,7 +329,7 @@ def export_matlab_case(
     }
     manifest["modality"] = modality
     write_json(seg_dir / EXPORT_MANIFEST, manifest)
-    write_json(output / "manifest.json", manifest)
+    write_json(case_root / "manifest.json", manifest)
 
     provenance = base_provenance(
         git_commit=git_commit(repo_root) if repo_root else None,
@@ -357,5 +370,33 @@ def export_matlab_case(
             "masks are model-derived, not manual contours; review them before meshing",
         ],
     )
-    write_provenance(output / "provenance.json", provenance)
+    write_provenance(case_root / "provenance.json", provenance)
+    if keep_original:
+        _write_original_copy(output, case_root)
     return manifest
+
+
+def _write_original_copy(output: Path, work: Path) -> None:
+    """Copy the exported masks and DICOMs to ``original/`` and make them read-only."""
+    original = output / "original"
+    original.mkdir()
+    for name in ("raw", "seg"):
+        shutil.copytree(work / name, original / name)
+    for name in ("manifest.json", "provenance.json"):
+        shutil.copy2(work / name, original / name)
+    for path in sorted(original.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    original.chmod(0o555)
+    (output / "README.md").write_text(
+        "# MATLAB export\n\n"
+        "- `work/` is the MATLAB case: run `vtseg.main_bivme_lge_tetmesh` or "
+        "`vtseg.main_ct_tetmesh` on it (or on this folder; they step into `work/`). "
+        "Corrections and meshes are written here, and only here.\n"
+        "- `original/` is a read-only copy of the exported DICOMs and mask stacks, "
+        "kept so the manual stage can always be compared with or restarted from "
+        "what was exported. Nothing writes here after the export.\n\n"
+        "To restart the manual stage, delete `work/`, copy `original/` to `work/`, "
+        "make the copy writable, and recreate the empty `mesh/`, `remesh/`, "
+        "`global/` and `visualizations/` folders.\n",
+        encoding="utf-8",
+    )

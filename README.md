@@ -274,10 +274,14 @@ This retains both endpoints. Do not add `--slice-order reference` when
 selecting reviewed source slice numbers; that option instead selects by the
 prepared NIfTI reference-volume order.
 
+The export directory holds `work/`, the case MATLAB reads and writes, and
+`original/`, a read-only copy of the exported masks and DICOMs that nothing
+touches afterwards (`--flat` writes the single-folder layout instead).
+
 In MATLAB, add the repository `matlab/` folder, run `setup_vtseg`, then run
-`vtseg.main_bivme_lge_tetmesh` on `$case/manual/matlab`. After correction and
-mesh generation, use `import-matlab-seg` above to create canonical manual NIfTI
-masks and QC.
+`vtseg.main_bivme_lge_tetmesh` on the export directory; it steps into `work/`.
+After correction and mesh generation, use `import-matlab-seg` above on the same
+directory to create canonical manual NIfTI masks and QC.
 
 Expected case outputs are:
 

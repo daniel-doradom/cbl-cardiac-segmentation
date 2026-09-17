@@ -371,7 +371,7 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     out = tmp_path / "matlab-case"
     manifest = export_matlab_case(
         masks, reference, out, start_slice=1, end_slice=5, slices=3,
-        slicer_approved=True,
+        slicer_approved=True, keep_original=False,
     )
 
     assert manifest["slice_count"] == 3
@@ -414,7 +414,7 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     endpoint_out = tmp_path / "matlab-case-endpoints"
     endpoint_manifest = export_matlab_case(
         masks, reference, endpoint_out, start_slice=1, end_slice=6, slices=4,
-        slicer_approved=True,
+        slicer_approved=True, keep_original=False,
     )
     endpoint_indices = [item["reference_volume_index"] for item in endpoint_manifest["slices"]]
     assert endpoint_indices[0] == image.shape[2] - 1
@@ -422,12 +422,38 @@ def test_export_matlab_seg_case(tmp_path, dicom_writer):
     assert set(abs(right - left) for left, right in zip(endpoint_indices, endpoint_indices[1:])) <= {1, 2}
 
     dense_out = tmp_path / "matlab-case-dense"
-    dense_manifest = export_matlab_case(masks, reference, dense_out, slicer_approved=True)
+    dense_manifest = export_matlab_case(
+        masks, reference, dense_out, slicer_approved=True, keep_original=False
+    )
     assert dense_manifest["slice_count"] == image.shape[2]
     assert dense_manifest["slice_selection"] == "all_selected_range_slices"
     assert [s["reference_volume_index"] for s in dense_manifest["slices"]] == list(
         reversed(range(image.shape[2]))
     )
+
+    # Default layout: an editable work/ case beside a read-only original/ copy.
+    import os
+    layout_out = tmp_path / "matlab-case-layout"
+    export_matlab_case(
+        masks, reference, layout_out, start_slice=1, end_slice=5, slices=3,
+        slicer_approved=True,
+    )
+    work, original = layout_out / "work", layout_out / "original"
+    for d in ("raw", "seg", "mesh", "remesh", "global", "visualizations"):
+        assert (work / d).is_dir()
+    assert (work / "manifest.json").is_file() and (work / "provenance.json").is_file()
+    assert sorted(p.name for p in (original / "raw").iterdir()) == sorted(
+        p.name for p in (work / "raw").iterdir()
+    )
+    for label in ("Epi", "Lendo", "Rendo", "myocardium"):
+        assert (original / "seg" / f"{label}.mat").read_bytes() == (
+            work / "seg" / f"{label}.mat"
+        ).read_bytes()
+    assert not (original / "mesh").exists()
+    assert not os.access(original / "seg" / "Epi.mat", os.W_OK)
+    assert not os.access(original / "seg", os.W_OK)
+    assert os.access(work / "seg" / "Epi.mat", os.W_OK)
+    assert (layout_out / "README.md").is_file()
     assert [item["base_to_apex_reference_slice"] for item in dense_manifest["slices"]] == list(
         range(1, image.shape[2] + 1)
     )

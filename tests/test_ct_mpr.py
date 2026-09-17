@@ -150,7 +150,7 @@ def test_ct_dicom_to_mpr_review_promotion_matlab_round_trip(tmp_path, dicom_writ
     matlab_case = tmp_path / "matlab"
     manifest = export_matlab_case(
         best / "segmentation" / "selected" / "normalized", best, matlab_case,
-        start_slice=1, end_slice=4, slices=3, slicer_approved=True,
+        start_slice=1, end_slice=4, slices=3, slicer_approved=True, keep_original=False,
     )
     assert manifest["modality"] == "CT"
     assert [entry["reference_volume_index"] for entry in manifest["slices"]] == [0, 2, 3]
@@ -162,7 +162,7 @@ def test_ct_dicom_to_mpr_review_promotion_matlab_round_trip(tmp_path, dicom_writ
     reversed_manifest = export_matlab_case(
         best / "segmentation" / "selected" / "normalized", best, reverse_case,
         start_slice=2, end_slice=4, slices=2, slice_order="reverse_reference",
-        slicer_approved=True,
+        slicer_approved=True, keep_original=False,
     )
     assert reversed_manifest["slice_order_reason"] == "explicit_reverse_reference_order"
     assert [entry["reference_volume_index"] for entry in reversed_manifest["slices"]] == [2, 0]
@@ -181,3 +181,11 @@ def test_ct_dicom_to_mpr_review_promotion_matlab_round_trip(tmp_path, dicom_writ
     assert imported.shape == nib.load(str(best / "volume" / "image.nii.gz")).shape
     assert set(np.unique(np.asarray(imported.dataobj))) == {0, 1, 2, 3}
     assert json.loads((best / "manual" / "provenance.json").read_text())["modality"] == "CT"
+    # An export folder with original/ and work/ imports from work/ when given the folder itself.
+    layout_case = tmp_path / "matlab-layout"
+    export_matlab_case(
+        best / "segmentation" / "selected" / "normalized", best, layout_case,
+        start_slice=1, end_slice=4, slices=3, slicer_approved=True,
+    )
+    import_matlab_case(layout_case, best, best / "manual-layout" / "normalized")
+    assert (best / "manual-layout" / "normalized" / "combined_labels.nii.gz").is_file()

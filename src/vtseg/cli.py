@@ -181,6 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="total slices within the selected range; both endpoints are retained",
     )
+    matlab_parser.add_argument(
+        "--flat",
+        action="store_true",
+        help=(
+            "write the case directly into --output instead of the default layout of an "
+            "editable work/ case beside a read-only original/ copy"
+        ),
+    )
 
     matlab_import_parser = sub.add_parser(
         "import-matlab-seg",
@@ -344,9 +352,13 @@ def main(argv: list[str] | None = None) -> int:
                 end_slice=args.end_slice,
                 slice_order=args.slice_order.replace("-", "_"),
                 slicer_approved=args.slicer_approved,
+                keep_original=not args.flat,
                 repo_root=_repo_root(),
             )
-            print(f"exported {manifest['slice_count']} slices to {args.output}")
+            case_root = args.output if args.flat else args.output / "work"
+            print(f"exported {manifest['slice_count']} slices to {case_root}")
+            if not args.flat:
+                print(f"read-only copy of the export kept in {args.output / 'original'}")
             print(json.dumps({"mask_dimensions": manifest["mask_dimensions"]}, indent=2))
             return 0
 

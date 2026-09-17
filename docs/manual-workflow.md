@@ -394,6 +394,21 @@ Each export gets its own output directory. This preserves the selected range,
 raw DICOM subset, mask stacks, and manifest together and prevents an accidental
 overwrite of a prior review.
 
+Inside that directory the exporter writes two copies of the case:
+
+- `work/` is the MATLAB case. Point `main_bivme_lge_tetmesh` or
+  `main_ct_tetmesh` at it, or at the export directory itself: both step into
+  `work/`. Corrections, `info.mat`, the review crop and the meshes are written
+  there and nowhere else.
+- `original/` is a read-only copy of the exported DICOMs and mask stacks.
+  Nothing writes there after the export, so the manual stage can always be
+  compared with, or restarted from, exactly what was exported.
+
+Because the server writes only at export time and MATLAB writes only into
+`work/`, the two sides of a two-way file sync never edit the same file, which is
+what keeps that sync free of conflicts. `--flat` restores the single-folder
+layout for tooling that expects it.
+
 `--slicer-approved` is a required acknowledgment that the matching LGE image
 and labels were inspected in 3D Slicer. The exporter records the approval and
 UTC timestamp in both `manifest.json` and `provenance.json`; it does not collect
@@ -413,7 +428,7 @@ addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg();
 
 caseDirectory = fullfile(repoRoot, 'results', 'case-mri', 'manual', ...
-    'matlab-source-START-END-COUNTslices');
+    'matlab-source-START-END-COUNTslices');   % the script steps into work/
 vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);
 ```
 
@@ -644,7 +659,7 @@ repoRoot = '/path/to/vt-segmentation-eval';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg();
 caseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...
-    'manual', 'matlab-native-mapped-kBASE-APEX-COUNTslices');
+    'manual', 'matlab-native-mapped-kBASE-APEX-COUNTslices');   % steps into work/
 vtseg.main_ct_tetmesh(caseDirectory, []);
 ```
 

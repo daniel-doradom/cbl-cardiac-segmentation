@@ -41,6 +41,9 @@ def import_matlab_case(
     matlab_case = Path(matlab_case_directory).expanduser().resolve()
     reference = Path(reference_directory).expanduser().resolve()
     output = Path(output_directory).expanduser().resolve()
+    if not (matlab_case / "seg").is_dir() and (matlab_case / "work" / "seg").is_dir():
+        # An export folder with original/ and work/: the corrected masks are in work/.
+        matlab_case = matlab_case / "work"
     seg = matlab_case / "seg"
     manifest_path = seg / "vtseg_export_manifest.json"
     if not manifest_path.is_file():

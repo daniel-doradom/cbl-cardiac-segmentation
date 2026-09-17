@@ -2,7 +2,12 @@
 
 This directory contains the maintained MATLAB implementation. It is source
 code only; all DICOM, masks, corrections, meshes, and figures remain under an
-ignored `results/<case>/manual/matlab/` case directory.
+ignored export directory, `results/<case>/manual/<export>/`.
+
+Each export directory holds `work/`, the case MATLAB reads and writes, and
+`original/`, a read-only copy of the exported masks and DICOMs that nothing
+touches afterwards. The entry points accept either the export directory or its
+`work/` sub-folder and always work in `work/`.
 
 ## Prerequisites
 
@@ -24,7 +29,8 @@ repoRoot = '/path/to/vt-segmentation-eval';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg(); % Finds <repo>/.external/iso2mesh when installed there.
 
-caseDirectory = fullfile(repoRoot, 'results', 'case-name', 'manual', 'matlab');
+caseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha06', 'manual', ...
+    'matlab-source-025-099-20slices');   % the script steps into work/
 vtseg.main_bivme_lge_tetmesh(caseDirectory, [], false);
 ```
 
@@ -34,7 +40,7 @@ output stages, but no MRI scar/LGE stage:
 
 ```matlab
 ctCaseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...
-    'manual', 'matlab-source-START-END-COUNTslices');
+    'manual', 'matlab-native-mapped-k661-833-20slices');   % steps into work/
 vtseg.main_ct_tetmesh(ctCaseDirectory, []);
 ```
 

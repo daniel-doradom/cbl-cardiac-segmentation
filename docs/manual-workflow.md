@@ -42,24 +42,70 @@ because it appears in `nvidia-smi`; follow the allocation policy of the lab.
 - Install iso2mesh separately in an authorized location. It is a dependency,
   not a copy of code maintained by this repository.
 
-Before beginning a review session, update source code and copy ignored case
-artifacts from the server:
+Source code moves with Git (`git pull --ff-only`). The ignored `results/` tree
+moves with **Unison**, two-way, so automatic outputs come down from the server
+and MATLAB outputs go back up without a manual copy.
+
+**Server, once, no sudo needed** (`~/.local/bin` is already on `PATH`):
 
 ```bash
-cd /path/to/vt-segmentation-eval && git pull --ff-only
-rsync -av --partial --progress USER@LAB_HOST:~/VT/vt-segmentation-eval/results/ \
-  /path/to/vt-segmentation-eval/results/
+curl -sL https://github.com/bcpierce00/unison/releases/download/v2.53.8/unison-2.53.8-ubuntu-22.04-x86_64-static.tar.gz | tar -xz -C /tmp
+cp /tmp/unison-2.53.8-ubuntu-22.04-x86_64-static/bin/unison* ~/.local/bin/
 ```
 
-One-line equivalent:
+**Workstation, once.** Install Unison (`sudo apt install unison`; any 2.52+
+talks to 2.53.8), then create `~/.unison/vtseg-results.prf`:
+
+```
+root = /path/to/vt-segmentation-eval/results
+root = ssh://USER@LAB_HOST//home/USER/VT/vt-segmentation-eval/results
+servercmd = /home/USER/.local/bin/unison
+fastcheck = true
+times = true
+links = true
+```
+
+`servercmd` is required: the SSH session Unison opens is non-interactive and
+does not see the login `PATH`. Run `unison vtseg-results` once interactively.
+The first run reports "no archive files" and lists every difference; **g**
+accepts the proposed copies, `<-?->` marks a conflict to decide by hand.
+
+**Automatic runs.** A user-level systemd timer keeps the two sides within a
+few minutes of each other without a terminal, survives reboots, and resumes
+after sleep. Use the paths that `which unison` and `echo $SSH_AUTH_SOCK` print
+on the workstation:
 
 ```bash
-cd /path/to/vt-segmentation-eval && git pull --ff-only && rsync -av --partial --progress USER@LAB_HOST:~/VT/vt-segmentation-eval/results/ /path/to/vt-segmentation-eval/results/
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/unison-vtseg.service <<'EOF'
+[Unit]
+Description=Two-way sync of vtseg results with the lab server
+[Service]
+Type=oneshot
+Environment=SSH_AUTH_SOCK=%t/gcr/ssh
+ExecStart=/usr/bin/unison vtseg-results -batch -terse
+EOF
+cat > ~/.config/systemd/user/unison-vtseg.timer <<'EOF'
+[Unit]
+Description=Run the vtseg results sync every 10 minutes
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+[Install]
+WantedBy=timers.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now unison-vtseg.timer
 ```
 
-This is intentionally one-way: automatic outputs are created on the server and
-reviewed locally. If a corrected MATLAB result must be returned to the server,
-use an explicit reverse `rsync` for that one case after review.
+`systemctl --user list-timers unison-vtseg.timer` shows the next run;
+`journalctl --user -u unison-vtseg` shows what each run did. `-batch` copies
+everything unambiguous and leaves a conflict for an interactive run.
+
+Conflicts should not arise: the server writes a MATLAB export only once, into
+`work/` and a read-only `original/` (see step 4), and MATLAB writes only into
+`work/`, so no file is edited on both sides. Do not run `rsync` against
+`results/` alongside Unison; a deletion on either side is propagated to the
+other, so keep anything you want to preserve outside `results/`.
 
 ## 2. Choose the correct input
 
@@ -416,7 +462,7 @@ reviewer identity.
 
 ## 5. Review, correct, and mesh in MATLAB
 
-On the personal workstation, after the server-to-workstation `rsync`:
+On the personal workstation, once Unison has brought the export down:
 
 ```matlab
 clear classes

@@ -1,5 +1,5 @@
 function [staged_mask, details] = stage_mask_component_action( ...
-        original_mask, current_staged_mask, action, selected_index, pixel_spacing)
+        original_mask, current_staged_mask, action, selected_index, pixel_spacing, connectivity)
 %STAGE_MASK_COMPONENT_ACTION Apply a reversible component-review action.
 
 if nargin < 4 || isempty(selected_index)
@@ -8,13 +8,16 @@ end
 if nargin < 5 || isempty(pixel_spacing)
     pixel_spacing = [1, 1];
 end
+if nargin < 6 || isempty(connectivity)
+    connectivity = 8;
+end
 if ~isequal(size(original_mask), size(current_staged_mask))
     error('vtseg:ComponentMaskSize', 'Original and staged masks must have the same size.');
 end
 
 original_mask = logical(original_mask);
 current_staged_mask = logical(current_staged_mask);
-analysis = vtseg.analyze_mask_components(current_staged_mask, pixel_spacing);
+analysis = vtseg.analyze_mask_components(current_staged_mask, pixel_spacing, connectivity);
 action = validatestring(action, ...
     {'keep_largest', 'remove_selected', 'restore', 'keep_all', 'cancel'});
 staged_mask = current_staged_mask;
@@ -36,10 +39,10 @@ switch action
         staged_mask = original_mask;
 end
 
-final_analysis = vtseg.analyze_mask_components(staged_mask, pixel_spacing);
-original_analysis = vtseg.analyze_mask_components(original_mask, pixel_spacing);
+final_analysis = vtseg.analyze_mask_components(staged_mask, pixel_spacing, connectivity);
+original_analysis = vtseg.analyze_mask_components(original_mask, pixel_spacing, connectivity);
 removed = original_mask & ~staged_mask;
-removed_analysis = vtseg.analyze_mask_components(removed, pixel_spacing);
+removed_analysis = vtseg.analyze_mask_components(removed, pixel_spacing, connectivity);
 details = struct( ...
     'Action', action, ...
     'OriginalComponentCount', original_analysis.Count, ...

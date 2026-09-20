@@ -527,9 +527,12 @@ the choice applies to:
   polygon.
 - `components` opens a semi-automatic disconnected-component review for the
   current Lendo, Rendo, or Epi mask. Components are detected independently on
-  each slice with 8-connectivity. Green marks the largest component, yellow
-  the selected component, and magenta the other potential islands. Click a
-  component or use **Previous**/**Next** to select it. **Keep largest** stages
+  each slice. The panel defaults to 4-connectivity so regions touching only at
+  a pixel corner remain separate anatomical candidates; use the
+  **Connectivity** toggle for 8-connectivity when corner touching should count
+  as connected. Green marks the largest component, yellow the selected
+  component, and magenta the other potential islands. Click a component or use
+  **Previous**/**Next** to select it. **Keep largest** stages
   removal of every smaller component, while **Remove selected** stages only
   the selected removal. **Restore** and **Keep all** return to the mask that
   entered component review. **Apply** always shows a before/after comparison

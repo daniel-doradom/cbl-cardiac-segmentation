@@ -82,6 +82,21 @@ verifyEqual(testCase, analysis.AreasPixels, 6);
 verifyEqual(testCase, analysis.AreasMm2, 6);
 end
 
+function testFourConnectivitySeparatesCornerTouchingIslands(testCase)
+mask = false(10, 10);
+mask(2:4, 2:4) = true;
+mask(5:6, 5:6) = true;
+eight_connected = vtseg.analyze_mask_components(mask, [1, 1], 8);
+four_connected = vtseg.analyze_mask_components(mask, [1, 1], 4);
+verifyEqual(testCase, eight_connected.Count, 1);
+verifyEqual(testCase, four_connected.Count, 2);
+
+staged = vtseg.stage_mask_component_action( ...
+    mask, mask, 'keep_largest', 1, [1, 1], 4);
+verifyTrue(testCase, staged(3, 3));
+verifyFalse(testCase, staged(5, 5));
+end
+
 function testMyocardiumIsRecomputedAndDisjoint(testCase)
 Epi = false(30, 30);
 Epi(3:28, 3:28) = true;

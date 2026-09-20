@@ -88,8 +88,10 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.
-- `components` reviews 8-connected foreground regions on the current slice.
-  The largest component is green, the selected component is yellow, and other
+- `components` reviews connected foreground regions on the current slice. It
+  defaults to 4-connectivity so corner-touching regions remain separate review
+  candidates; toggle **Connectivity** to use 8-connectivity instead. The
+  largest component is green, the selected component is yellow, and other
   potential islands are magenta. Select components by clicking or with
   **Previous**/**Next**. **Keep largest** and **Remove selected** only stage
   removals; **Restore** and **Keep all** return to the input mask. **Apply**
@@ -130,6 +132,6 @@ results = runtests(fullfile(repoRoot, 'matlab', 'tests'));
 assertSuccess(results);
 ```
 
-The component-review tests cover 8-connected island detection, reversible
-staging, hole preservation, physical area, myocardium consistency, audit
-output, and protection of `original/`.
+The component-review tests cover 4- and 8-connected island detection,
+reversible staging, hole preservation, physical area, myocardium consistency,
+audit output, and protection of `original/`.

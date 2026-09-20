@@ -40,13 +40,13 @@ verifyFalse(testCase, staged(55, 8));
 verifyEqual(testCase, details.FinalComponentCount, 2);
 end
 
-function testRestoreAndCancelPreserveOriginal(testCase)
+function testRestoreKeepAllAndCancelPreserveOriginal(testCase)
 original = component_fixture();
 analysis = vtseg.analyze_mask_components(original, [1, 1]);
 [~, selected] = min(analysis.AreasPixels);
 [staged, ~] = vtseg.stage_mask_component_action( ...
     original, original, 'remove_selected', selected, [1, 1]);
-for action = {'restore', 'cancel'}
+for action = {'restore', 'keep_all', 'cancel'}
     restored = vtseg.stage_mask_component_action( ...
         original, staged, action{1}, 1, [1, 1]);
     verifyEqual(testCase, restored, original);

@@ -65,7 +65,7 @@ MATLAB corrections are authoritative for mesh generation.
 
 During correction, use the in-window **Previous**, **Keep / Next**, and
 **Modify** controls. Each LV, RV, and epicardial mask then supports `keep`,
-`edit`, `Review Islands`, `redraw`, and `clear`:
+`edit`, `components`, `redraw`, and `clear`:
 
 - `edit` initializes movable controls from each existing mask boundary. Drag
   them, or add and delete vertices from the polygon's right-click menu;
@@ -83,21 +83,22 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   a crescent's smooth walls, raise **Largest gap** or **Detail tolerance**;
   the tips keep their handles either way. A component with twelve or fewer
   boundary pixels keeps every one of them as a handle so it cannot vanish
-  during contour editing; use `Review Islands` to review and remove it. The
+  during contour editing; use `components` to review and remove it. The
   primary component is drawn solid; disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.
-- `Review Islands` reviews disconnected foreground islands and enclosed
-  background holes on the current slice. A closed contour inside a filled mask
-  is a hole, not an island; toggle **Review: Islands** to **Review: Holes** to
-  inspect it. Regions touching only at a pixel corner count as separate
-  (4-connectivity). The largest component is green, the selected component is
-  yellow, and other potential islands are magenta. Select components by
-  clicking or with **Previous**/**Next**. **Keep largest** and **Remove
-  selected** only stage removals. In hole mode the same buttons become **Fill
-  all holes** and **Fill selected hole**; exterior background is never listed.
-  **Restore** returns to the input mask. **Apply**
+- `components` reviews disconnected foreground islands and enclosed background
+  holes on the current slice. A closed contour inside a filled mask is a hole,
+  not an island; toggle **Review: Islands** to **Review: Holes** to inspect it.
+  The panel defaults to 4-connectivity so corner-touching regions remain separate review
+  candidates; toggle **Connectivity** to use 8-connectivity instead. The
+  largest component is green, the selected component is yellow, and other
+  potential islands are magenta. Select components by clicking or with
+  **Previous**/**Next**. **Keep largest** and **Remove selected** only stage
+  removals. In hole mode the same buttons become **Fill all holes** and
+  **Fill selected hole**; exterior background is never listed. **Restore** and
+  **Keep all** return to the input mask. **Apply**
   shows a before/after comparison and requires **Keep changes** before the
   candidate reaches the normal slice-level confirmation. **Cancel** and
   **Discard changes** leave the mask untouched. A small component is only a

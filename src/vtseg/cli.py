@@ -189,6 +189,15 @@ def build_parser() -> argparse.ArgumentParser:
             "editable work/ case beside a read-only original/ copy"
         ),
     )
+    matlab_parser.add_argument(
+        "--rv-free-wall-mm",
+        type=float,
+        default=0.0,
+        help=(
+            "CT only: initialize an approximate RV free wall by expanding the RV "
+            "blood pool outward by this in-plane physical distance in millimetres"
+        ),
+    )
 
     matlab_import_parser = sub.add_parser(
         "import-matlab-seg",
@@ -353,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
                 slice_order=args.slice_order.replace("-", "_"),
                 slicer_approved=args.slicer_approved,
                 keep_original=not args.flat,
+                rv_free_wall_mm=args.rv_free_wall_mm,
                 repo_root=_repo_root(),
             )
             case_root = args.output if args.flat else args.output / "work"

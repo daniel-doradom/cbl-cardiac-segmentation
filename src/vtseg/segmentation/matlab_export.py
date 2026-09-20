@@ -8,6 +8,7 @@ stacks and leaves all geometry derivation to that validated code.
 from __future__ import annotations
 
 import json
+import math
 import shutil
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,35 @@ MATLAB_MASKS = {
     "Epi": None,  # union of the three canonical masks
 }
 EXPORT_MANIFEST = "vtseg_export_manifest.json"
+
+
+def _rv_free_wall_proxy(
+    rv_blood_pool: np.ndarray,
+    lv_blood_pool: np.ndarray,
+    myocardium: np.ndarray,
+    *,
+    distance_mm: float,
+    in_plane_spacing_mm: tuple[float, float],
+) -> np.ndarray:
+    """Return only the new voxels added by a per-slice physical RV dilation."""
+    from scipy.ndimage import distance_transform_edt
+
+    proxy = np.zeros_like(rv_blood_pool, dtype=bool)
+    for index in range(rv_blood_pool.shape[2]):
+        rv_slice = rv_blood_pool[:, :, index]
+        if not np.any(rv_slice):
+            continue
+        expanded = distance_transform_edt(
+            ~rv_slice,
+            sampling=in_plane_spacing_mm,
+        ) <= distance_mm
+        proxy[:, :, index] = (
+            expanded
+            & ~rv_slice
+            & ~lv_blood_pool[:, :, index]
+            & ~myocardium[:, :, index]
+        )
+    return proxy
 
 
 def _base_to_apex_indices(epicardium: np.ndarray) -> tuple[list[int], str]:
@@ -168,6 +198,7 @@ def export_matlab_case(
     slice_order: str = "base_to_apex",
     slicer_approved: bool = False,
     keep_original: bool = True,
+    rv_free_wall_mm: float = 0.0,
     repo_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Export canonical masks as a MATLAB meshing case.
@@ -199,6 +230,10 @@ def export_matlab_case(
     modality = selection.get("series_characterization", {}).get("modality")
     if modality not in {"CT", "MR"}:
         raise NormalizationError(f"MATLAB export requires CT or MR reference data, got {modality!r}")
+    if not math.isfinite(rv_free_wall_mm) or rv_free_wall_mm < 0:
+        raise NormalizationError("--rv-free-wall-mm must be a finite, non-negative distance")
+    if rv_free_wall_mm > 0 and modality != "CT":
+        raise NormalizationError("--rv-free-wall-mm is supported only for CT MATLAB exports")
     instance_paths = [Path(p) for p in selection["selected_instance_paths"]]
 
     image = nib.load(str(image_path))
@@ -214,7 +249,9 @@ def export_matlab_case(
     if len(instance_paths) != image.shape[2]:
         raise NormalizationError("prepared volume and selected instance list disagree")
 
-    epicardium = volumes["lv_blood_pool"] | volumes["rv_blood_pool"] | volumes["myocardium"]
+    canonical_epicardium = (
+        volumes["lv_blood_pool"] | volumes["rv_blood_pool"] | volumes["myocardium"]
+    )
     for first, second in (
         ("lv_blood_pool", "rv_blood_pool"),
         ("lv_blood_pool", "myocardium"),
@@ -224,7 +261,32 @@ def export_matlab_case(
         if overlap:
             raise NormalizationError(f"{first} and {second} overlap in {overlap} voxels")
 
-    base_to_apex, base_to_apex_reason = _base_to_apex_indices(epicardium)
+    rv_proxy: np.ndarray | None = None
+    in_plane_spacing_mm = tuple(float(value) for value in image.header.get_zooms()[:2])
+    if rv_free_wall_mm > 0:
+        if any(not math.isfinite(value) or value <= 0 for value in in_plane_spacing_mm):
+            raise NormalizationError(
+                "RV free-wall initialization requires valid positive in-plane NIfTI spacing"
+            )
+        rv_proxy = _rv_free_wall_proxy(
+            volumes["rv_blood_pool"],
+            volumes["lv_blood_pool"],
+            volumes["myocardium"],
+            distance_mm=rv_free_wall_mm,
+            in_plane_spacing_mm=in_plane_spacing_mm,
+        )
+        epicardium = canonical_epicardium | rv_proxy
+        matlab_myocardium = (
+            epicardium & ~volumes["lv_blood_pool"] & ~volumes["rv_blood_pool"]
+        )
+    else:
+        # Keep the established export path exactly unchanged when the feature is off.
+        epicardium = canonical_epicardium
+        matlab_myocardium = volumes["myocardium"]
+
+    # A MATLAB-only initialization must not change the established source-slice
+    # direction or selection semantics.
+    base_to_apex, base_to_apex_reason = _base_to_apex_indices(canonical_epicardium)
     base_to_apex_positions = {index: position + 1 for position, index in enumerate(base_to_apex)}
     if slice_order == "base_to_apex":
         ordered, order_reason = base_to_apex, base_to_apex_reason
@@ -283,9 +345,11 @@ def export_matlab_case(
     stacks = {
         "Lendo": volumes["lv_blood_pool"],
         "Rendo": volumes["rv_blood_pool"],
-        "myocardium": volumes["myocardium"],
+        "myocardium": matlab_myocardium,
         "Epi": epicardium,
     }
+    if rv_proxy is not None:
+        stacks["rv_free_wall_proxy"] = rv_proxy
     written = {}
     for label, volume in stacks.items():
         stack = np.ascontiguousarray(volume[:, :, ordered])
@@ -328,8 +392,53 @@ def export_matlab_case(
         ],
     }
     manifest["modality"] = modality
+    if rv_proxy is not None:
+        proxy_counts = written["rv_free_wall_proxy"]
+        manifest["rv_free_wall_proxy"] = {
+            "enabled": True,
+            "requested_dilation_mm": float(rv_free_wall_mm),
+            "method": "per-slice 2D Euclidean distance transform",
+            "in_plane_spacing_mm": list(in_plane_spacing_mm),
+            "source_mask": "rv_blood_pool.nii.gz",
+            "output_stack": "seg/rv_free_wall_proxy.mat",
+            "definition": (
+                "dilated RV minus original RV, LV blood pool, and canonical myocardium"
+            ),
+            "proxy_voxels_per_matlab_slice": proxy_counts,
+        }
+        for entry, count in zip(manifest["slices"], proxy_counts):
+            entry["rv_free_wall_proxy_voxels"] = count
     write_json(seg_dir / EXPORT_MANIFEST, manifest)
     write_json(case_root / "manifest.json", manifest)
+
+    model_options = {
+        "mask_source": str(masks_path),
+        "slice_selection": slice_selection,
+        "slice_order": slice_order,
+        "slice_order_reason": order_reason,
+        "matlab_stack_order": "zero-padded generated raw file names match NIfTI z-index order",
+        "matlab_geometry": "per-slice DICOM positions; supports nonuniform selected spacing",
+        "info_mat": "not written; generate with readdata(raw_path, seg_path)",
+        "slicer_review": {
+            "approved": True,
+            "approval_recorded_at": slicer_approval_time,
+        },
+    }
+    warnings = [
+        "MATLAB mask stacks assume readdata orders raw/ by file name; verify against "
+        f"seg/{EXPORT_MANIFEST} before meshing",
+        "selected endpoints are always retained; intermediate selected slices can differ by one "
+        "reference slice and MATLAB uses their actual DICOM positions",
+        "base-to-apex ordering is inferred from endpoint epicardial area; visually confirm "
+        "the first and last exported slices before manual correction",
+        "masks are model-derived, not manual contours; review them before meshing",
+    ]
+    if rv_proxy is not None:
+        model_options["rv_free_wall_proxy"] = manifest["rv_free_wall_proxy"]
+        warnings.append(
+            "RV free-wall proxy is a geometric initialization from RV blood-pool dilation, "
+            "not an automated RV myocardium segmentation; inspect and correct every slice"
+        )
 
     provenance = base_provenance(
         git_commit=git_commit(repo_root) if repo_root else None,
@@ -343,32 +452,12 @@ def export_matlab_case(
         affine=image.affine.tolist(),
         segmentation_backend="matlab-meshing-export",
         model_task="canonical_masks_to_matlab_seg_case",
-        model_options={
-            "mask_source": str(masks_path),
-            "slice_selection": slice_selection,
-            "slice_order": slice_order,
-            "slice_order_reason": order_reason,
-            "matlab_stack_order": "zero-padded generated raw file names match NIfTI z-index order",
-            "matlab_geometry": "per-slice DICOM positions; supports nonuniform selected spacing",
-            "info_mat": "not written; generate with readdata(raw_path, seg_path)",
-            "slicer_review": {
-                "approved": True,
-                "approval_recorded_at": slicer_approval_time,
-            },
-        },
+        model_options=model_options,
         device="cpu",
         output_files=[str(Path("raw") / name) for name in names]
         + [str(Path("seg") / f"{label}.mat") for label in stacks],
         software_versions={**software_versions(), "scipy": package_version("scipy")},
-        warnings=[
-            "MATLAB mask stacks assume readdata orders raw/ by file name; verify against "
-            f"seg/{EXPORT_MANIFEST} before meshing",
-            "selected endpoints are always retained; intermediate selected slices can differ by one "
-            "reference slice and MATLAB uses their actual DICOM positions",
-            "base-to-apex ordering is inferred from endpoint epicardial area; visually confirm "
-            "the first and last exported slices before manual correction",
-            "masks are model-derived, not manual contours; review them before meshing",
-        ],
+        warnings=warnings,
     )
     write_provenance(case_root / "provenance.json", provenance)
     if keep_original:

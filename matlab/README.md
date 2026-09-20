@@ -47,6 +47,15 @@ vtseg.main_ct_tetmesh(ctCaseDirectory, []);
 CT DICOMs are displayed after RescaleSlope/RescaleIntercept is applied (HU),
 using the DICOM Window Center/Width as the initial range when supplied.
 
+For CT cases whose automatic myocardium lacks the RV free wall,
+`export-matlab-seg --rv-free-wall-mm 3.0` can initialize an approximate wall
+by expanding the RV blood pool in-plane before creating `Epi.mat`. The original
+`Rendo.mat` remains unchanged, leaving a synthetic collar between the RV
+endocardial and epicardial contours. The export records that collar separately
+as `seg/rv_free_wall_proxy.mat`. It is only an editable geometric starting
+estimate; inspect and correct every slice before meshing. The option does not
+modify canonical NIfTI masks and is not available for MR exports.
+
 Both entry points first ask for one rectangular display crop on a
 representative slice, then open the correction window. The crop is reused by
 the correction window and the final overview figures without changing the

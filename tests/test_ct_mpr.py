@@ -1,4 +1,5 @@
 import json
+import hashlib
 
 import nibabel as nib
 import numpy as np
@@ -189,3 +190,108 @@ def test_ct_dicom_to_mpr_review_promotion_matlab_round_trip(tmp_path, dicom_writ
     )
     import_matlab_case(layout_case, best, best / "manual-layout" / "normalized")
     assert (best / "manual-layout" / "normalized" / "combined_labels.nii.gz").is_file()
+
+
+def test_ct_matlab_export_optional_rv_free_wall_proxy(tmp_path, dicom_writer):
+    pytest.importorskip("scipy.io")
+    from scipy.io import loadmat
+
+    study_uid = "1.2.826.0.1.3680043.10.492.1"
+    series_uid = "1.2.826.0.1.3680043.10.492.2"
+    dicom_root = tmp_path / "ct-dicom"
+    for index in range(2):
+        path = dicom_writer(
+            dicom_root / f"slice_{index + 1:02d}.dcm",
+            study_uid=study_uid,
+            series_uid=series_uid,
+            z=float(index * 4),
+            instance=index + 1,
+            modality="CT",
+        )
+        ds = pydicom.dcmread(str(path))
+        ds.SOPClassUID = CTImageStorage
+        ds.file_meta.MediaStorageSOPClassUID = CTImageStorage
+        ds.save_as(path, enforce_file_format=True)
+
+    reference = tmp_path / "ct-reference"
+    prepare_series(scan_headers(dicom_root), series_uid, reference)
+    image = nib.load(str(reference / "volume" / "image.nii.gz"))
+    assert image.header.get_zooms()[:2] == (2.0, 3.0)
+
+    masks = tmp_path / "canonical-masks"
+    masks.mkdir()
+    lv = np.zeros(image.shape, dtype=np.uint8)
+    rv = np.zeros(image.shape, dtype=np.uint8)
+    myo = np.zeros(image.shape, dtype=np.uint8)
+    rv[1, 1, :] = 1
+    lv[1, 2, :] = 1       # 3 mm from RV: must be excluded from the proxy.
+    myo[2, 1, :] = 1      # 2 mm from RV: already real myocardium, not proxy.
+    for name, data in (("lv_blood_pool", lv), ("rv_blood_pool", rv), ("myocardium", myo)):
+        nib.save(nib.Nifti1Image(data, image.affine), masks / f"{name}.nii.gz")
+    write_combined_labels(reference / "volume" / "image.nii.gz", masks)
+    canonical_paths = [masks / f"{name}.nii.gz" for name in (*CANONICAL_MASKS, "combined_labels")]
+    canonical_hashes = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in canonical_paths
+    }
+
+    default_out = tmp_path / "matlab-default"
+    default_manifest = export_matlab_case(
+        masks, reference, default_out, slicer_approved=True, keep_original=False,
+    )
+    zero_out = tmp_path / "matlab-zero"
+    zero_manifest = export_matlab_case(
+        masks, reference, zero_out, slicer_approved=True, keep_original=False,
+        rv_free_wall_mm=0,
+    )
+    assert "rv_free_wall_proxy" not in default_manifest
+    assert "rv_free_wall_proxy" not in zero_manifest
+    assert not (default_out / "seg" / "rv_free_wall_proxy.mat").exists()
+    for name in ("Lendo", "Rendo", "Epi", "myocardium"):
+        default_stack = loadmat(str(default_out / "seg" / f"{name}.mat"))[name]
+        zero_stack = loadmat(str(zero_out / "seg" / f"{name}.mat"))[name]
+        assert np.array_equal(default_stack, zero_stack)
+
+    proxy_out = tmp_path / "matlab-proxy"
+    manifest = export_matlab_case(
+        masks, reference, proxy_out, slicer_approved=True, keep_original=False,
+        rv_free_wall_mm=3.0,
+    )
+    proxy = loadmat(str(proxy_out / "seg" / "rv_free_wall_proxy.mat"))["rv_free_wall_proxy"] > 0
+    lendo = loadmat(str(proxy_out / "seg" / "Lendo.mat"))["Lendo"] > 0
+    rendo = loadmat(str(proxy_out / "seg" / "Rendo.mat"))["Rendo"] > 0
+    epi = loadmat(str(proxy_out / "seg" / "Epi.mat"))["Epi"] > 0
+    myocardium = loadmat(str(proxy_out / "seg" / "myocardium.mat"))["myocardium"] > 0
+
+    # At [row, column] spacing [2, 3] mm, a 3 mm dilation reaches orthogonal
+    # neighbours but not sqrt(2^2 + 3^2) mm diagonals. LV and real myocardium
+    # neighbours are excluded, leaving exactly two synthetic voxels per slice.
+    assert manifest["rv_free_wall_proxy"]["in_plane_spacing_mm"] == [2.0, 3.0]
+    assert manifest["rv_free_wall_proxy"]["proxy_voxels_per_matlab_slice"] == [2, 2]
+    assert np.all(np.sum(proxy, axis=(0, 1)) == 2)
+    assert not np.any(proxy & lendo)
+    assert not np.any(proxy & rendo)
+    selected = [entry["reference_volume_index"] for entry in manifest["slices"]]
+    assert np.array_equal(lendo, lv[:, :, selected] > 0)
+    assert np.array_equal(rendo, rv[:, :, selected] > 0)
+    assert np.array_equal(myocardium, epi & ~lendo & ~rendo)
+
+    provenance = json.loads((proxy_out / "provenance.json").read_text(encoding="utf-8"))
+    proxy_options = provenance["model_options"]["rv_free_wall_proxy"]
+    assert proxy_options["requested_dilation_mm"] == 3.0
+    assert proxy_options["source_mask"] == "rv_blood_pool.nii.gz"
+    assert any("not an automated RV myocardium segmentation" in item for item in provenance["warnings"])
+    assert canonical_hashes == {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in canonical_paths
+    }
+
+    selection_path = reference / "source" / "selected_series.json"
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    selection["series_characterization"]["modality"] = "MR"
+    selection_path.write_text(json.dumps(selection), encoding="utf-8")
+    rejected_out = tmp_path / "matlab-mr-proxy"
+    with pytest.raises(NormalizationError, match="only for CT"):
+        export_matlab_case(
+            masks, reference, rejected_out, slicer_approved=True,
+            keep_original=False, rv_free_wall_mm=3.0,
+        )
+    assert not rejected_out.exists()

@@ -692,6 +692,41 @@ CT exports contain `raw/` short-axis CT DICOMs, `seg/Lendo.mat`, `Rendo.mat`,
 `Epi.mat`, `myocardium.mat`, and `seg/vtseg_export_manifest.json`. They retain
 the source DICOM filename/position mapping.
 
+### Optional CT RV free-wall initialization
+
+TotalSegmentator's CT myocardium label may cover the LV wall and septum without
+a complete RV free wall. For MATLAB initialization only, the exporter can grow
+the RV blood pool outward by a physical in-plane distance and place the newly
+added collar inside `Epi.mat` and `myocardium.mat`:
+
+```bash
+PYTHONPATH=src python -m vtseg export-matlab-seg \
+  "$bestCase/segmentation/$chosen/normalized" \
+  --reference "$bestCase" \
+  --output "$bestCase/manual/matlab-native-mapped-rv-wall-3mm" \
+  --slicer-approved \
+  --slice-order reverse-reference \
+  --start-slice $((BASE+1)) --end-slice $((APEX+1)) --slices COUNT \
+  --rv-free-wall-mm 3.0
+```
+
+One-line equivalent:
+
+```bash
+PYTHONPATH=src python -m vtseg export-matlab-seg "$bestCase/segmentation/$chosen/normalized" --reference "$bestCase" --output "$bestCase/manual/matlab-native-mapped-rv-wall-3mm" --slicer-approved --slice-order reverse-reference --start-slice $((BASE+1)) --end-slice $((APEX+1)) --slices COUNT --rv-free-wall-mm 3.0
+```
+
+The operation is two-dimensional per slice and uses NIfTI in-plane spacing, so
+`3.0` always means 3 mm rather than three pixels. `Lendo.mat` and `Rendo.mat`
+remain unchanged. `seg/rv_free_wall_proxy.mat`, the manifest, and provenance
+record exactly which additional voxels were synthesized. The canonical NIfTI
+masks and `combined_labels.nii.gz` are never changed.
+
+This collar is a geometric starting estimate, not an RV myocardium
+segmentation. Inspect and correct every exported slice in MATLAB before mesh
+generation. Omit the option, or set it to zero, to retain the established
+export exactly. A positive value is rejected for MR exports.
+
 For a trial of a reviewed candidate before promotion, export directly from the
 MPR case's `segmentation/native_ct_mapped/normalized/` or
 `segmentation/totalsegmentator/normalized/`, using that same MPR case as

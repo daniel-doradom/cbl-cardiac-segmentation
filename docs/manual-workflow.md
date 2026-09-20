@@ -525,16 +525,22 @@ the choice applies to:
   a control moves, MATLAB smoothly deforms the dense original boundary before
   rasterizing it, rather than replacing the mask with the sparse control
   polygon.
-- `components` opens a semi-automatic disconnected-component review for the
-  current Lendo, Rendo, or Epi mask. Components are detected independently on
-  each slice. The panel defaults to 4-connectivity so regions touching only at
+- `components` opens a semi-automatic review of disconnected foreground
+  islands and enclosed background holes for the current Lendo, Rendo, or Epi
+  mask. Both are detected independently on each slice. A small closed contour
+  inside an otherwise filled mask is a hole, not an island; switch **Review:
+  Islands** to **Review: Holes** to select it. The panel defaults to
+  4-connectivity so regions touching only at
   a pixel corner remain separate anatomical candidates; use the
   **Connectivity** toggle for 8-connectivity when corner touching should count
   as connected. Green marks the largest component, yellow the selected
   component, and magenta the other potential islands. Click a component or use
   **Previous**/**Next** to select it. **Keep largest** stages
   removal of every smaller component, while **Remove selected** stages only
-  the selected removal. **Restore** and **Keep all** return to the mask that
+  the selected removal. In hole mode the same two buttons become **Fill all
+  holes** and **Fill selected hole**, staging the filling of every enclosed
+  region or only the selected one; background open to the image edge is never
+  a candidate. **Restore** and **Keep all** return to the mask that
   entered component review. **Apply** always shows a before/after comparison
   and then requires **Keep changes**; **Cancel**, closing the review, or
   choosing **Discard changes** leaves the mask untouched. Small components are
@@ -551,7 +557,7 @@ review** in the figure. After saving, `myocardium.mat` is regenerated as
 `Epi & ~Lendo & ~Rendo`, keeping scar analysis and mesh geometry consistent.
 Accepted component decisions are written to the ignored case-local
 `work/component_review_audit.json`, including the slice, DICOM filename,
-structure, action, component counts, removed areas, and timestamp. Only
+structure, action, component counts, removed or filled areas, and timestamp. Only
 `work/` masks and audit files change; `original/` remains the untouched export
 baseline.
 

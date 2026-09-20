@@ -74,6 +74,57 @@ verifyEqual(testCase, staged, mask);
 verifyFalse(testCase, staged(20, 20));
 end
 
+function testEnclosedHolesAreDetectedSeparately(testCase)
+mask = false(50, 50);
+mask(5:40, 5:40) = true;
+mask(15:25, 15:25) = false;
+mask(30:31, 30:32) = false;
+analysis = vtseg.analyze_mask_holes(mask, [0.5, 0.8], 4);
+verifyEqual(testCase, analysis.Count, 2);
+verifyEqual(testCase, sort(analysis.AreasPixels), [6, 121]);
+verifyEqual(testCase, sort(analysis.AreasMm2), [2.4, 48.4], 'AbsTol', 1e-12);
+end
+
+function testFillSelectedHoleFillsOnlyThatHole(testCase)
+mask = false(50, 50);
+mask(5:40, 5:40) = true;
+mask(15:25, 15:25) = false;
+mask(30:31, 30:32) = false;
+holes = vtseg.analyze_mask_holes(mask, [1, 1], 4);
+[~, selected] = max(holes.AreasPixels);
+[staged, details] = vtseg.stage_mask_component_action( ...
+    mask, mask, 'fill_selected_hole', selected, [1, 1], 4);
+verifyTrue(testCase, staged(20, 20));
+verifyFalse(testCase, staged(30, 30));
+verifyEqual(testCase, details.FilledHoleAreasPixels, 121);
+verifyEmpty(testCase, details.RemovedAreasPixels);
+end
+
+function testFillAllHolesFillsEveryEnclosedRegionOnly(testCase)
+mask = false(50, 50);
+mask(5:40, 5:40) = true;
+mask(15:25, 15:25) = false;
+mask(30:31, 30:32) = false;
+mask(45, 45) = true;                       % a separate island must survive
+[staged, details] = vtseg.stage_mask_component_action( ...
+    mask, mask, 'fill_all_holes', 1, [1, 1], 4);
+verifyTrue(testCase, staged(20, 20));
+verifyTrue(testCase, staged(30, 30));
+verifyTrue(testCase, staged(45, 45));
+verifyFalse(testCase, staged(2, 2));
+verifyEqual(testCase, vtseg.analyze_mask_holes(staged, [1, 1], 4).Count, 0);
+verifyEqual(testCase, sort(details.FilledHoleAreasPixels), [6, 121]);
+verifyEqual(testCase, details.FinalComponentCount, 2);
+end
+
+function testExteriorBackgroundIsNotAHole(testCase)
+mask = false(30, 30);
+mask(5:20, 5:20) = true;
+mask(10:12, 5:8) = false;
+analysis = vtseg.analyze_mask_holes(mask, [1, 1], 4);
+verifyEqual(testCase, analysis.Count, 0);
+end
+
 function testPhysicalAreaUsesPixelSpacing(testCase)
 mask = false(10, 10);
 mask(2:3, 2:4) = true;
@@ -154,6 +205,7 @@ audit_path = vtseg.save_component_review_audit(fullfile(root, 'work', 'seg'), ac
 verifyTrue(testCase, isfile(audit_path));
 saved = jsondecode(fileread(audit_path));
 verifyEqual(testCase, saved.actions.structure, 'Rendo');
+verifyEmpty(testCase, saved.actions.filled_hole_areas_pixels);
 verifyError(testCase, @() vtseg.save_component_review_audit( ...
     fullfile(root, 'original', 'seg'), action), 'vtseg:ReadOnlyOriginal');
 verifyFalse(testCase, isfile(fullfile(root, 'original', 'component_review_audit.json')));

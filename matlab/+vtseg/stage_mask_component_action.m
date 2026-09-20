@@ -19,7 +19,8 @@ original_mask = logical(original_mask);
 current_staged_mask = logical(current_staged_mask);
 analysis = vtseg.analyze_mask_components(current_staged_mask, pixel_spacing, connectivity);
 action = validatestring(action, ...
-    {'keep_largest', 'remove_selected', 'restore', 'keep_all', 'cancel'});
+    {'keep_largest', 'remove_selected', 'fill_selected_hole', 'fill_all_holes', ...
+     'restore', 'keep_all', 'cancel'});
 staged_mask = current_staged_mask;
 
 switch action
@@ -35,6 +36,21 @@ switch action
                 'Selected component must be an integer between 1 and %d.', analysis.Count);
         end
         staged_mask(analysis.PixelIdxList{selected_index}) = false;
+    case 'fill_selected_hole'
+        holes = vtseg.analyze_mask_holes( ...
+            current_staged_mask, pixel_spacing, connectivity);
+        if holes.Count == 0 || selected_index < 1 || selected_index > holes.Count || ...
+                selected_index ~= round(selected_index)
+            error('vtseg:HoleSelection', ...
+                'Selected hole must be an integer between 1 and %d.', holes.Count);
+        end
+        staged_mask(holes.PixelIdxList{selected_index}) = true;
+    case 'fill_all_holes'
+        holes = vtseg.analyze_mask_holes( ...
+            current_staged_mask, pixel_spacing, connectivity);
+        for hole_index = 1:holes.Count
+            staged_mask(holes.PixelIdxList{hole_index}) = true;
+        end
     case {'restore', 'keep_all', 'cancel'}
         staged_mask = original_mask;
 end
@@ -43,10 +59,14 @@ final_analysis = vtseg.analyze_mask_components(staged_mask, pixel_spacing, conne
 original_analysis = vtseg.analyze_mask_components(original_mask, pixel_spacing, connectivity);
 removed = original_mask & ~staged_mask;
 removed_analysis = vtseg.analyze_mask_components(removed, pixel_spacing, connectivity);
+filled = ~original_mask & staged_mask;
+filled_analysis = vtseg.analyze_mask_components(filled, pixel_spacing, connectivity);
 details = struct( ...
     'Action', action, ...
     'OriginalComponentCount', original_analysis.Count, ...
     'FinalComponentCount', final_analysis.Count, ...
     'RemovedAreasPixels', removed_analysis.AreasPixels, ...
-    'RemovedAreasMm2', removed_analysis.AreasMm2);
+    'RemovedAreasMm2', removed_analysis.AreasMm2, ...
+    'FilledHoleAreasPixels', filled_analysis.AreasPixels, ...
+    'FilledHoleAreasMm2', filled_analysis.AreasMm2);
 end

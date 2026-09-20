@@ -15,12 +15,11 @@ end
 
 setup_vtseg();
 
-% An export folder holds original/ (read-only reference copy) and work/ (the
-% editable case). MATLAB always works in work/.
-if ~isfolder(fullfile(main_path, 'raw')) && isfolder(fullfile(main_path, 'work', 'raw'))
-    main_path = fullfile(main_path, 'work');
-    fprintf('Working in the editable copy: %s\n', main_path);
+resolved_path = vtseg.resolve_matlab_work_path(main_path);
+if ~strcmp(resolved_path, main_path)
+    fprintf('Working in the editable copy: %s\n', resolved_path);
 end
+main_path = resolved_path;
 
 required_directories = {'raw', 'seg', 'mesh', 'remesh', 'global'};
 for index = 1:numel(required_directories)

@@ -65,7 +65,7 @@ MATLAB corrections are authoritative for mesh generation.
 
 During correction, use the in-window **Previous**, **Keep / Next**, and
 **Modify** controls. Each LV, RV, and epicardial mask then supports `keep`,
-`edit`, `redraw`, and `clear`:
+`edit`, `components`, `redraw`, and `clear`:
 
 - `edit` initializes movable controls from each existing mask boundary. Drag
   them, or add and delete vertices from the polygon's right-click menu;
@@ -82,12 +82,22 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   which is relabelled **Largest gap** and reaches 40 mm in this mode. To thin
   a crescent's smooth walls, raise **Largest gap** or **Detail tolerance**;
   the tips keep their handles either way. A component with twelve or fewer
-  boundary pixels keeps every one of them as a handle so it cannot vanish;
-  if such a cluster is unwanted, `redraw` the structure without it. The
+  boundary pixels keeps every one of them as a handle so it cannot vanish
+  during contour editing; use `components` to review and remove it. The
   primary component is drawn solid; disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.
+- `components` reviews 8-connected foreground regions on the current slice.
+  The largest component is green, the selected component is yellow, and other
+  potential islands are magenta. Select components by clicking or with
+  **Previous**/**Next**. **Keep largest** and **Remove selected** only stage
+  removals; **Restore** and **Keep all** return to the input mask. **Apply**
+  shows a before/after comparison and requires **Keep changes** before the
+  candidate reaches the normal slice-level confirmation. **Cancel** and
+  **Discard changes** leave the mask untouched. A small component is only a
+  review candidate, because disconnected foreground can represent valid
+  anatomy.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the entire slice.
@@ -96,7 +106,30 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
 Invalid cavity overlap or a cavity extending outside Epi cannot be accepted.
 After final confirmation, `myocardium.mat` is regenerated as
 `Epi & ~Lendo & ~Rendo` before scar analysis and mesh generation.
+Accepted component decisions are recorded in the ignored
+`work/component_review_audit.json`. The audit includes slice and DICOM
+identity, structure, action, original and final component counts, removed
+areas in pixels and mm2, and a timestamp. Component cleanup and all other
+manual changes are confined to `work/`; the entry points reject `original/`
+as an editable case.
 
 For the full server-to-Slicer-to-MATLAB procedure, source-slice selection
 semantics, synchronization commands, corrected-mask import, and recovery from
 late-stage mesh export errors, see [the manual workflow runbook](../docs/manual-workflow.md).
+
+## Tests
+
+Run the MATLAB unit suite from a session where the repository's `matlab/`
+directory is on the path:
+
+```matlab
+clear functions
+rehash
+addpath(fullfile(repoRoot, 'matlab'));
+results = runtests(fullfile(repoRoot, 'matlab', 'tests'));
+assertSuccess(results);
+```
+
+The component-review tests cover 8-connected island detection, reversible
+staging, hole preservation, physical area, myocardium consistency, audit
+output, and protection of `original/`.

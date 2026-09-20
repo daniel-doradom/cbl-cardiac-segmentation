@@ -1,4 +1,5 @@
 function ventriclesSegmentation_v2(path_image,path_out, gs_range)% manual segmentation of ventricles
+vtseg.assert_editable_matlab_path(path_out);
   % gs_range = [-100 2529]; %%% brightness range for showing MRI images
     % gs_range = [400 2200];
 %     gs_range = [100 400];
@@ -266,6 +267,7 @@ end
 
 last_segmented_slice = count - 1;
 save_confirmed = false;
+component_actions = empty_component_actions();
 
 if last_segmented_slice > numel(folder)
     error('Mask stack has %d slices, but only %d DICOM files were found for review.', ...
@@ -275,11 +277,11 @@ end
 if last_segmented_slice > 0
     display_crop = load_display_crop(path_out, size(Epi, 1), size(Epi, 2));
     if lower(lstr) == 'y'
-        [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( ...
+        [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_and_correct_masks( ...
             path_image, folder, last_segmented_slice, gs_range, ...
             Lendo, Rendo, Epi, lepi, true, display_crop);
     else
-        [Lendo, Rendo, Epi, ~, save_confirmed] = review_and_correct_masks( ...
+        [Lendo, Rendo, Epi, ~, save_confirmed, component_actions] = review_and_correct_masks( ...
             path_image, folder, last_segmented_slice, gs_range, ...
             Lendo, Rendo, Epi, [], false, display_crop);
     end
@@ -302,8 +304,9 @@ end
 
 % Myocardium mask
 Epi   = logical(Epi); Lendo = logical(Lendo); Rendo = logical(Rendo);
-myocardium = Epi & ~Lendo & ~Rendo;
+myocardium = vtseg.recompute_myocardium(Lendo, Rendo, Epi);
 save(fullfile(path_out, 'myocardium.mat'), 'myocardium');
+vtseg.save_component_review_audit(path_out, component_actions);
 
 plot_final_segmentation_overview( ...
     path_image, folder, last_segmented_slice, gs_range, ...
@@ -331,11 +334,12 @@ function [BW, xj, yj] = draw_polygon_mask(ax, image_handle, color, line_width)
     yj = [position(:, 2); position(1, 2)];
 end
 
-function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( ...
+function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_and_correct_masks( ...
         path_image, folder, last_segmented_slice, gs_range, ...
         Lendo, Rendo, Epi, lepi, has_lepi, display_crop)
 
     save_confirmed = false;
+    component_actions = empty_component_actions();
 
     theme = vtseg.ReviewStyle.theme();
     layout = review_layout();
@@ -475,15 +479,18 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             candidate_Rendo = Rendo;
             candidate_Epi = Epi;
             candidate_lepi = lepi;
+            candidate_component_actions = empty_component_actions();
             correction_valid = false;
             set(navigation_controls, 'Enable', 'off');
 
             while ~correction_valid
-                [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi] = ...
+                [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi, new_component_actions] = ...
                     correct_slice_masks( ...
                         ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
                         candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range, ...
-                        pixel_spacing);
+                        pixel_spacing, folder(k).name);
+                candidate_component_actions = append_component_actions( ...
+                    candidate_component_actions, new_component_actions);
 
                 if ~isvalid(figure_handle)
                     disp('Review window was closed. Masks will not be saved.');
@@ -512,6 +519,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
                         if has_lepi
                             candidate_lepi(:, :, k) = old_lepi;
                         end
+                        candidate_component_actions = empty_component_actions();
                         correction_valid = true;
                     end
                 end
@@ -550,6 +558,8 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
             set(navigation_controls, 'Enable', 'on');
 
             if strcmp(keep_str, 'keep')
+                component_actions = append_component_actions( ...
+                    component_actions, candidate_component_actions);
                 k = k + 1;
             else
                 Lendo(:, :, k) = old_Lendo;
@@ -610,13 +620,17 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed] = review_and_correct_masks( .
     end
 end
 
-function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
+function [Lendo, Rendo, Epi, lepi, component_actions] = correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range, ...
-        pixel_spacing)
+        pixel_spacing, source_file)
+
+    component_actions = empty_component_actions();
 
     current_mask = Lendo(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
+    [new_mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
         ax, display_image, current_mask, 'LV endocardium', 'r', gs_range, pixel_spacing);
+    component_actions = add_component_action( ...
+        component_actions, component_details, k, source_file, 'Lendo');
     if did_update
         Lendo(:, :, k) = apply_mask_update( ...
             Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -627,8 +641,10 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
     end
 
     current_mask = Rendo(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
+    [new_mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
         ax, display_image, current_mask, 'RV endocardium', 'c', gs_range, pixel_spacing);
+    component_actions = add_component_action( ...
+        component_actions, component_details, k, source_file, 'Rendo');
     if did_update
         Rendo(:, :, k) = apply_mask_update( ...
             Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -639,8 +655,10 @@ function [Lendo, Rendo, Epi, lepi] = correct_slice_masks( ...
     end
 
     current_mask = Epi(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
+    [new_mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
         ax, display_image, current_mask, 'Epicardium', 'g', gs_range, pixel_spacing);
+    component_actions = add_component_action( ...
+        component_actions, component_details, k, source_file, 'Epi');
     if did_update
         Epi(:, :, k) = apply_mask_update( ...
             Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
@@ -681,7 +699,53 @@ function show_current_correction_masks( ...
     drawnow;
 end
 
-function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
+function actions = empty_component_actions()
+actions = struct( ...
+    'slice_number', {}, ...
+    'source_dicom_filename', {}, ...
+    'structure', {}, ...
+    'original_component_count', {}, ...
+    'action', {}, ...
+    'removed_component_areas_pixels', {}, ...
+    'removed_component_areas_mm2', {}, ...
+    'timestamp', {}, ...
+    'final_component_count', {});
+end
+
+function actions = add_component_action( ...
+        actions, details, slice_number, source_file, structure)
+if isempty(details)
+    return;
+end
+record = struct( ...
+    'slice_number', slice_number, ...
+    'source_dicom_filename', source_file, ...
+    'structure', structure, ...
+    'original_component_count', details.OriginalComponentCount, ...
+    'action', details.Action, ...
+    'removed_component_areas_pixels', details.RemovedAreasPixels, ...
+    'removed_component_areas_mm2', details.RemovedAreasMm2, ...
+    'timestamp', component_timestamp(), ...
+    'final_component_count', details.FinalComponentCount);
+actions(end + 1) = record;
+end
+
+function combined = append_component_actions(existing, added)
+if isempty(existing)
+    combined = added;
+elseif isempty(added)
+    combined = existing;
+else
+    combined = [existing(:); added(:)];
+end
+end
+
+function value = component_timestamp()
+value = char(datetime('now', 'TimeZone', 'UTC', ...
+    'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
+end
+
+function [mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
         ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
 %CORRECT_ONE_MASK Prompt for one structure. display_dirty is true when the
 % chosen action replaced what the axes shows, so the caller must redraw the
@@ -689,13 +753,15 @@ function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_m
     did_update = false;
     replace_entire_slice = false;
     display_dirty = false;
+    component_details = [];
     mask = logical(current_mask);
 
     figure_handle = ancestor(ax, 'figure');
     emphasize_review_structure(figure_handle, ax, structure_name, color);
     action = choose_review_action(figure_handle, ...
         sprintf('%s action', structure_name), ...
-        {'Keep', 'keep'; 'Edit', 'edit'; 'Redraw', 'redraw'; 'Clear', 'clear'}, ...
+        {'Keep', 'keep'; 'Edit', 'edit'; 'Components', 'components'; ...
+         'Redraw', 'redraw'; 'Clear', 'clear'}, ...
         review_structure_text_color(color));
     restore_review_emphasis(figure_handle, ax);
 
@@ -717,6 +783,13 @@ function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_m
         return;
     end
 
+    if strcmp(action, 'components')
+        [mask, did_update, component_details] = review_mask_components( ...
+            ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing);
+        display_dirty = true;
+        return;
+    end
+
     if strcmp(action, 'redraw')
         mask = redraw_mask_components(ax, Im, color, gs_range);
         did_update = true;
@@ -724,6 +797,208 @@ function [mask, did_update, replace_entire_slice, display_dirty] = correct_one_m
         display_dirty = true;
         return;
     end
+end
+
+function [mask, did_update, details] = review_mask_components( ...
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
+%REVIEW_MASK_COMPONENTS Stage and confirm removal of disconnected islands.
+original_mask = logical(current_mask);
+staged_mask = original_mask;
+mask = original_mask;
+did_update = false;
+details = [];
+selected_index = 1;
+staged_action = 'keep_all';
+figure_handle = ancestor(ax, 'figure');
+layout = review_layout();
+theme = vtseg.ReviewStyle.theme();
+panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, ...
+    sprintf('Components: %s', structure_name));
+set(panel, 'FontSize', theme.font_size + 1, ...
+    'ForegroundColor', review_structure_text_color(color));
+status_label = vtseg.ReviewStyle.label(panel, [0.05 0.82 0.90 0.12], '', 'left', true);
+vtseg.ReviewStyle.button(panel, [0.05 0.68 0.43 0.11], 'Previous', ...
+    @(~, ~) move_selection(-1), 'neutral');
+vtseg.ReviewStyle.button(panel, [0.52 0.68 0.43 0.11], 'Next', ...
+    @(~, ~) move_selection(1), 'neutral');
+vtseg.ReviewStyle.button(panel, [0.05 0.53 0.43 0.11], 'Keep largest', ...
+    @(~, ~) stage_action('keep_largest'), 'neutral');
+vtseg.ReviewStyle.button(panel, [0.52 0.53 0.43 0.11], 'Remove selected', ...
+    @(~, ~) stage_action('remove_selected'), 'danger');
+vtseg.ReviewStyle.button(panel, [0.05 0.38 0.43 0.11], 'Restore', ...
+    @(~, ~) stage_action('restore'), 'neutral');
+vtseg.ReviewStyle.button(panel, [0.52 0.38 0.43 0.11], 'Keep all', ...
+    @(~, ~) stage_action('keep_all'), 'neutral');
+vtseg.ReviewStyle.button(panel, [0.05 0.20 0.90 0.13], 'Apply', ...
+    @(~, ~) finish_component_review('apply'), 'primary');
+vtseg.ReviewStyle.button(panel, [0.05 0.05 0.90 0.11], 'Cancel', ...
+    @(~, ~) finish_component_review('cancel'), 'neutral');
+
+setappdata(figure_handle, 'vtsegComponentReviewAction', '');
+redraw_components();
+uiwait(figure_handle);
+if ~isvalid(figure_handle)
+    return;
+end
+action = getappdata(figure_handle, 'vtsegComponentReviewAction');
+if isvalid(panel)
+    delete(panel);
+end
+if ~strcmp(action, 'apply')
+    return;
+end
+
+show_component_before_after( ...
+    ax, Im, original_mask, staged_mask, structure_name, color, gs_range);
+confirmation = choose_review_action(figure_handle, ...
+    'Apply component cleanup?', ...
+    {'Keep changes', 'keep'; 'Discard changes', 'discard'});
+if ~strcmp(confirmation, 'keep')
+    return;
+end
+
+mask = staged_mask;
+did_update = ~isequal(mask, original_mask);
+details = summarize_component_review( ...
+    original_mask, staged_mask, staged_action, pixel_spacing);
+
+    function move_selection(offset)
+        analysis = vtseg.analyze_mask_components(staged_mask, pixel_spacing);
+        if analysis.Count == 0
+            selected_index = 0;
+        else
+            selected_index = mod(max(1, selected_index) - 1 + offset, analysis.Count) + 1;
+        end
+        redraw_components();
+    end
+
+    function select_component(index)
+        selected_index = index;
+        redraw_components();
+    end
+
+    function stage_action(action_name)
+        analysis = vtseg.analyze_mask_components(staged_mask, pixel_spacing);
+        if strcmp(action_name, 'remove_selected') && analysis.Count == 0
+            return;
+        end
+        [staged_mask, ~] = vtseg.stage_mask_component_action( ...
+            original_mask, staged_mask, action_name, selected_index, pixel_spacing);
+        staged_action = action_name;
+        updated = vtseg.analyze_mask_components(staged_mask, pixel_spacing);
+        if updated.Count == 0
+            selected_index = 0;
+        else
+            selected_index = min(max(1, selected_index), updated.Count);
+        end
+        redraw_components();
+    end
+
+    function redraw_components()
+        [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
+        cla(ax);
+        imshow(Im, display_gs_range, 'Parent', ax);
+        hold(ax, 'on');
+        plot_component_boundaries(ax, original_mask, [0.45 0.48 0.53], ...
+            max(0.5, contour_width), '--', []);
+        analysis = vtseg.analyze_mask_components(staged_mask, pixel_spacing);
+        if analysis.Count == 0
+            selected_index = 0;
+            set(status_label, 'String', 'No foreground components remain.');
+        else
+            selected_index = min(max(1, selected_index), analysis.Count);
+            for component_index = 1:analysis.Count
+                component_color = [1.00 0.30 1.00];
+                line_width = max(1.0, contour_width);
+                if component_index == analysis.LargestIndex
+                    component_color = [0.25 1.00 0.35];
+                end
+                if component_index == selected_index
+                    component_color = [1.00 0.85 0.10];
+                    line_width = max(2.5, 1.6 * max(1, contour_width));
+                end
+                component_mask = false(analysis.ImageSize);
+                component_mask(analysis.PixelIdxList{component_index}) = true;
+                plot_component_boundaries(ax, component_mask, component_color, ...
+                    line_width, '-', component_index);
+            end
+            largest_text = '';
+            if selected_index == analysis.LargestIndex
+                largest_text = ' (largest)';
+            end
+            set(status_label, 'String', sprintf( ...
+                '%d/%d%s | %d px | %.1f mm^2', selected_index, analysis.Count, ...
+                largest_text, analysis.AreasPixels(selected_index), ...
+                analysis.AreasMm2(selected_index)));
+        end
+        vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
+            '%s components: green largest, yellow selected, magenta candidates', ...
+            structure_name));
+        drawnow;
+    end
+
+    function plot_component_boundaries(target_ax, component_mask, line_color, ...
+            line_width, line_style, component_index)
+        boundaries = bwboundaries(component_mask, 8, 'noholes');
+        for boundary_index = 1:numel(boundaries)
+            boundary = boundaries{boundary_index};
+            line_handle = plot(target_ax, boundary(:, 2), boundary(:, 1), ...
+                'Color', line_color, 'LineWidth', line_width, ...
+                'LineStyle', line_style);
+            if isempty(component_index)
+                set(line_handle, 'HitTest', 'off', 'PickableParts', 'none');
+            else
+                set(line_handle, 'HitTest', 'on', 'PickableParts', 'all', ...
+                    'ButtonDownFcn', @(~, ~) select_component(component_index));
+            end
+        end
+    end
+
+    function finish_component_review(action_name)
+        if isvalid(figure_handle)
+            setappdata(figure_handle, 'vtsegComponentReviewAction', action_name);
+            uiresume(figure_handle);
+        end
+    end
+end
+
+function details = summarize_component_review(original_mask, staged_mask, action, pixel_spacing)
+original = vtseg.analyze_mask_components(original_mask, pixel_spacing);
+final = vtseg.analyze_mask_components(staged_mask, pixel_spacing);
+removed = vtseg.analyze_mask_components(logical(original_mask) & ~logical(staged_mask), pixel_spacing);
+details = struct( ...
+    'Action', action, ...
+    'OriginalComponentCount', original.Count, ...
+    'FinalComponentCount', final.Count, ...
+    'RemovedAreasPixels', removed.AreasPixels, ...
+    'RemovedAreasMm2', removed.AreasMm2);
+end
+
+function show_component_before_after( ...
+        review_ax, display_image, before_mask, after_mask, structure_name, color, fallback_gs_range)
+[display_gs_range, contour_width] = ...
+    current_review_display_settings(review_ax, fallback_gs_range);
+comparison_figure = vtseg.ReviewStyle.newFigure( ...
+    sprintf('Mask correction: compare %s components', structure_name), ...
+    'WindowStyle', 'modal', 'Position', [160 180 1150 560]);
+before_ax = subplot(1, 2, 1, 'Parent', comparison_figure);
+after_ax = subplot(1, 2, 2, 'Parent', comparison_figure);
+show_component_comparison(before_ax, display_image, before_mask, color, ...
+    display_gs_range, contour_width, 'Before component review');
+show_component_comparison(after_ax, display_image, after_mask, color, ...
+    display_gs_range, contour_width, 'After component review');
+vtseg.ReviewStyle.button(comparison_figure, [0.42 0.02 0.16 0.065], ...
+    'Return to decision', @(~, ~) delete(comparison_figure), 'primary');
+uiwait(comparison_figure);
+end
+
+function show_component_comparison( ...
+        ax, display_image, mask, color, display_gs_range, contour_width, panel_title)
+imshow(display_image, display_gs_range, 'Parent', ax);
+hold(ax, 'on');
+plot_mask_contour(ax, mask, color, max(1, contour_width));
+theme = vtseg.ReviewStyle.theme();
+title(ax, panel_title, 'FontWeight', 'bold', 'FontSize', 11, 'Color', theme.text);
 end
 
 function [mask, did_update] = edit_existing_mask( ...

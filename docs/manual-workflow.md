@@ -516,7 +516,8 @@ the choice applies to:
   about every 15 mm, so to thin a crescent's walls raise **Largest gap** or
   **Detail tolerance**; the tips keep their handles either way. A component of
   twelve or fewer boundary pixels keeps all of them as handles so it cannot
-  vanish; if such a cluster is unwanted, `redraw` the structure without it.
+  vanish during contour editing; use `components` to review and remove such a
+  cluster without redrawing the structure.
   Either mode keeps every handle on the imported boundary and changes nothing
   until a handle is moved and accepted. The largest outer boundary is drawn
   solid; smaller disconnected components are dashed.
@@ -524,6 +525,18 @@ the choice applies to:
   a control moves, MATLAB smoothly deforms the dense original boundary before
   rasterizing it, rather than replacing the mask with the sparse control
   polygon.
+- `components` opens a semi-automatic disconnected-component review for the
+  current Lendo, Rendo, or Epi mask. Components are detected independently on
+  each slice with 8-connectivity. Green marks the largest component, yellow
+  the selected component, and magenta the other potential islands. Click a
+  component or use **Previous**/**Next** to select it. **Keep largest** stages
+  removal of every smaller component, while **Remove selected** stages only
+  the selected removal. **Restore** and **Keep all** return to the mask that
+  entered component review. **Apply** always shows a before/after comparison
+  and then requires **Keep changes**; **Cancel**, closing the review, or
+  choosing **Discard changes** leaves the mask untouched. Small components are
+  candidates for review, not automatically errors, because disconnected
+  anatomy can be legitimate.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the slice.
@@ -533,6 +546,11 @@ outside Epi. Rejecting a correction restores that slice's original masks.
 Select **Finish review**, then choose **Save reviewed masks** or **Discard
 review** in the figure. After saving, `myocardium.mat` is regenerated as
 `Epi & ~Lendo & ~Rendo`, keeping scar analysis and mesh geometry consistent.
+Accepted component decisions are written to the ignored case-local
+`work/component_review_audit.json`, including the slice, DICOM filename,
+structure, action, component counts, removed areas, and timestamp. Only
+`work/` masks and audit files change; `original/` remains the untouched export
+baseline.
 
 The viewer shows the current MATLAB mask number plus the raw DICOM filename,
 source number, and reference z-index. Use this information when deciding which

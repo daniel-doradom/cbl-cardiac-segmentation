@@ -1,3 +1,5 @@
+Run manually
+
 # Manual Review and Mesh Runbook
 
 This is the supported, reproducible workflow for a research case. Python runs
@@ -90,7 +92,7 @@ cat > ~/.config/systemd/user/unison-vtseg.timer <<'EOF'
 Description=Run the vtseg results sync every 10 minutes
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=10min
+OnUnitActiveSec=5min
 [Install]
 WantedBy=timers.target
 EOF
@@ -100,6 +102,12 @@ systemctl --user daemon-reload && systemctl --user enable --now unison-vtseg.tim
 `systemctl --user list-timers unison-vtseg.timer` shows the next run;
 `journalctl --user -u unison-vtseg` shows what each run did. `-batch` copies
 everything unambiguous and leaves a conflict for an interactive run.
+
+To run bysync manually:
+
+```bash
+systemctl --user start unison-vtseg.service && journalctl --user -u unison-vtseg -n 20 --no-pager
+```
 
 Conflicts should not arise: the server writes a MATLAB export only once, into
 `work/` and a read-only `original/` (see step 4), and MATLAB writes only into
@@ -127,7 +135,7 @@ refuses to invent a registration if they do not.
 
 1. `CUDA_VISIBLE_DEVICES=GPU_ID`				$\rightarrow$ See `nvtop` and choose most free gpu.
 2. `study=data/diagnostics/CASE/Diagnostics` 	$\rightarrow$ Full MRI Exam path
-3. `case=results/legacy/nshaXX-mri-RUN_LABEL` 		$\rightarrow$ unique automatic-run folder
+3. `case=results/legacy/nshaXX-mri-RUN_LABEL` 	$\rightarrow$ unique automatic-run folder
 4. `cineSeriesUid='xxxxx-xxxx-xxxxx-xxxx'` 		$\rightarrow$ cine short-axis series UID (see in Weasis)
 5. `lgeSeriesUid ='xxxxx-xxxx-xxxxx-xxxx'` 		$\rightarrow$ matching lge series UID (see in Weasis)
 
@@ -683,9 +691,9 @@ PYTHONPATH=src python -m vtseg collect-review "$mprCase"
 
 Open both pairs in Slicer, always loading image and labels from the same pair:
 
-| Folder | Candidate |
-| --- | --- |
-| `review/1_direct_mpr/` | TotalSegmentator run directly on the short-axis MPR |
+| Folder                         | Candidate                                                                |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `review/1_direct_mpr/`       | TotalSegmentator run directly on the short-axis MPR                      |
 | `review/2_native_ct_mapped/` | Native full-CT TotalSegmentator masks resampled onto that exact MPR grid |
 
 Both pairs use the same MPR volume geometry. Select the candidate manually;

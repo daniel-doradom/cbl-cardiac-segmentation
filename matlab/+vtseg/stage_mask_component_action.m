@@ -20,7 +20,7 @@ current_staged_mask = logical(current_staged_mask);
 analysis = vtseg.analyze_mask_components(current_staged_mask, pixel_spacing, connectivity);
 action = validatestring(action, ...
     {'keep_largest', 'remove_selected', 'fill_selected_hole', 'fill_all_holes', ...
-     'restore', 'keep_all', 'cancel'});
+     'restore', 'cancel'});
 staged_mask = current_staged_mask;
 
 switch action
@@ -51,7 +51,7 @@ switch action
         for hole_index = 1:holes.Count
             staged_mask(holes.PixelIdxList{hole_index}) = true;
         end
-    case {'restore', 'keep_all', 'cancel'}
+    case {'restore', 'cancel'}
         staged_mask = original_mask;
 end
 

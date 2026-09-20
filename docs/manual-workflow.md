@@ -516,7 +516,7 @@ the choice applies to:
   about every 15 mm, so to thin a crescent's walls raise **Largest gap** or
   **Detail tolerance**; the tips keep their handles either way. A component of
   twelve or fewer boundary pixels keeps all of them as handles so it cannot
-  vanish during contour editing; use `components` to review and remove such a
+  vanish during contour editing; use `Review Islands` to review and remove such a
   cluster without redrawing the structure.
   Either mode keeps every handle on the imported boundary and changes nothing
   until a handle is moved and accepted. The largest outer boundary is drawn
@@ -525,23 +525,21 @@ the choice applies to:
   a control moves, MATLAB smoothly deforms the dense original boundary before
   rasterizing it, rather than replacing the mask with the sparse control
   polygon.
-- `components` opens a semi-automatic review of disconnected foreground
+- `Review Islands` opens a semi-automatic review of disconnected foreground
   islands and enclosed background holes for the current Lendo, Rendo, or Epi
   mask. Both are detected independently on each slice. A small closed contour
   inside an otherwise filled mask is a hole, not an island; switch **Review:
-  Islands** to **Review: Holes** to select it. The panel defaults to
-  4-connectivity so regions touching only at
-  a pixel corner remain separate anatomical candidates; use the
-  **Connectivity** toggle for 8-connectivity when corner touching should count
-  as connected. Green marks the largest component, yellow the selected
+  Islands** to **Review: Holes** to select it. Regions touching only at a
+  pixel corner count as separate candidates (4-connectivity). Green marks the
+  largest component, yellow the selected
   component, and magenta the other potential islands. Click a component or use
   **Previous**/**Next** to select it. **Keep largest** stages
   removal of every smaller component, while **Remove selected** stages only
   the selected removal. In hole mode the same two buttons become **Fill all
   holes** and **Fill selected hole**, staging the filling of every enclosed
   region or only the selected one; background open to the image edge is never
-  a candidate. **Restore** and **Keep all** return to the mask that
-  entered component review. **Apply** always shows a before/after comparison
+  a candidate. **Restore** returns to the mask that entered the review.
+  **Apply** always shows a before/after comparison
   and then requires **Keep changes**; **Cancel**, closing the review, or
   choosing **Discard changes** leaves the mask untouched. Small components are
   candidates for review, not automatically errors, because disconnected

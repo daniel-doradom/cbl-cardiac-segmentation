@@ -65,7 +65,7 @@ MATLAB corrections are authoritative for mesh generation.
 
 During correction, use the in-window **Previous**, **Keep / Next**, and
 **Modify** controls. Each LV, RV, and epicardial mask then supports `keep`,
-`edit`, `components`, `redraw`, and `clear`:
+`edit`, `redraw`, `clear`, and `back`:
 
 - `edit` initializes movable controls from each existing mask boundary. Drag
   them, or add and delete vertices from the polygon's right-click menu;
@@ -83,13 +83,17 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   a crescent's smooth walls, raise **Largest gap** or **Detail tolerance**;
   the tips keep their handles either way. A component with twelve or fewer
   boundary pixels keeps every one of them as a handle so it cannot vanish
-  during contour editing; use `components` to review and remove it. The
+  during contour editing; use **Review Islands** to review and remove it. The
   primary component is drawn solid; disconnected components are dashed.
 - accepting an edit with no moved controls leaves the imported mask unchanged.
   When a control is moved, its displacement is smoothly applied to the dense
   original boundary before it is rasterized, preserving native CT detail.
-- `components` reviews disconnected foreground islands and enclosed background
-  holes on the current slice. A closed contour inside a filled mask is a hole,
+- **Review Islands**, a button inside `edit`, reviews disconnected foreground
+  islands and enclosed background holes on the current slice. Pending handle
+  moves are applied first, and the editor reopens on the result so the
+  contour can still be adjusted before **Accept contour edits**. **Cancel** in
+  the editor returns the mask that entered `edit`, undoing island changes as
+  well. A closed contour inside a filled mask is a hole,
   not an island; toggle **Review: Islands** to **Review: Holes** to inspect it.
   The panel defaults to 4-connectivity so corner-touching regions remain separate review
   candidates; toggle **Connectivity** to use 8-connectivity instead. The
@@ -108,6 +112,8 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   components from scratch.
 - `clear` removes that structure from the entire slice.
 - `keep` preserves the imported mask exactly.
+- `back` returns to the previous structure on this slice. On the LV
+  endocardium it leaves Modify and the slice keeps the masks it had before.
 
 Invalid cavity overlap or a cavity extending outside Epi cannot be accepted.
 After final confirmation, `myocardium.mat` is regenerated as

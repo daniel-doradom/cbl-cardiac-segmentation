@@ -516,7 +516,7 @@ the choice applies to:
   about every 15 mm, so to thin a crescent's walls raise **Largest gap** or
   **Detail tolerance**; the tips keep their handles either way. A component of
   twelve or fewer boundary pixels keeps all of them as handles so it cannot
-  vanish during contour editing; use `components` to review and remove such a
+  vanish during contour editing; use **Review Islands** to review and remove such a
   cluster without redrawing the structure.
   Either mode keeps every handle on the imported boundary and changes nothing
   until a handle is moved and accepted. The largest outer boundary is drawn
@@ -525,9 +525,12 @@ the choice applies to:
   a control moves, MATLAB smoothly deforms the dense original boundary before
   rasterizing it, rather than replacing the mask with the sparse control
   polygon.
-- `components` opens a semi-automatic review of disconnected foreground
-  islands and enclosed background holes for the current Lendo, Rendo, or Epi
-  mask. Both are detected independently on each slice. A small closed contour
+- **Review Islands**, a button inside `edit`, opens a semi-automatic review of
+  disconnected foreground islands and enclosed background holes for the
+  current Lendo, Rendo, or Epi mask. Pending handle moves are applied first,
+  and the editor reopens on the result, so the contour can still be adjusted
+  before **Accept contour edits**; **Cancel** in the editor undoes island
+  changes too. Both are detected independently on each slice. A small closed contour
   inside an otherwise filled mask is a hole, not an island; switch **Review:
   Islands** to **Review: Holes** to select it. The panel defaults to
   4-connectivity so regions touching only at
@@ -549,6 +552,8 @@ the choice applies to:
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the slice.
+- `back` returns to the previous structure (Epi to RV, RV to LV). On the LV
+  endocardium it leaves Modify and the slice keeps its masks as they were.
 
 MATLAB blocks acceptance when LV and RV overlap or either cavity extends
 outside Epi. Rejecting a correction restores that slice's original masks.

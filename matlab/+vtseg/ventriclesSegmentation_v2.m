@@ -481,11 +481,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
             candidate_lepi = lepi;
             candidate_component_actions = empty_component_actions();
             correction_valid = false;
+            modify_abandoned = false;
             set(navigation_controls, 'Enable', 'off');
 
             while ~correction_valid
-                [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi, new_component_actions] = ...
-                    correct_slice_masks( ...
+                [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi, ...
+                    new_component_actions, went_back] = correct_slice_masks( ...
                         ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
                         candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range, ...
                         pixel_spacing, folder(k).name);
@@ -495,6 +496,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
                 if ~isvalid(figure_handle)
                     disp('Review window was closed. Masks will not be saved.');
                     return;
+                end
+                if went_back
+                    % Back on the first structure leaves Modify; this slice
+                    % keeps the masks it had before Modify was pressed.
+                    modify_abandoned = true;
+                    break;
                 end
 
                 validation_errors = validate_slice_masks( ...
@@ -523,6 +530,11 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
                         correction_valid = true;
                     end
                 end
+            end
+
+            if modify_abandoned
+                set(navigation_controls, 'Enable', 'on');
+                continue;
             end
 
             Lendo = candidate_Lendo;
@@ -620,67 +632,64 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
     end
 end
 
-function [Lendo, Rendo, Epi, lepi, component_actions] = correct_slice_masks( ...
+function [Lendo, Rendo, Epi, lepi, component_actions, went_back] = correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range, ...
         pixel_spacing, source_file)
+%CORRECT_SLICE_MASKS Prompt for each structure of one slice in order.
+% Back returns to the previous structure. Back on the first structure sets
+% went_back and hands the masks back exactly as they came in.
 
     component_actions = empty_component_actions();
-
-    current_mask = Lendo(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
-        ax, display_image, current_mask, 'LV endocardium', 'r', gs_range, pixel_spacing);
-    component_actions = add_component_action( ...
-        component_actions, component_details, k, source_file, 'Lendo');
-    if did_update
-        Lendo(:, :, k) = apply_mask_update( ...
-            Lendo(:, :, k), new_mask, display_crop, replace_entire_slice);
-    end
-    if did_update || display_dirty
-        show_current_correction_masks( ...
-            ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
-    end
-
-    current_mask = Rendo(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
-        ax, display_image, current_mask, 'RV endocardium', 'c', gs_range, pixel_spacing);
-    component_actions = add_component_action( ...
-        component_actions, component_details, k, source_file, 'Rendo');
-    if did_update
-        Rendo(:, :, k) = apply_mask_update( ...
-            Rendo(:, :, k), new_mask, display_crop, replace_entire_slice);
-    end
-    if did_update || display_dirty
-        show_current_correction_masks( ...
-            ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
-    end
-
-    current_mask = Epi(display_crop.rows, display_crop.columns, k);
-    [new_mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
-        ax, display_image, current_mask, 'Epicardium', 'g', gs_range, pixel_spacing);
-    component_actions = add_component_action( ...
-        component_actions, component_details, k, source_file, 'Epi');
-    if did_update
-        Epi(:, :, k) = apply_mask_update( ...
-            Epi(:, :, k), new_mask, display_crop, replace_entire_slice);
-    end
-    if did_update || display_dirty
-        show_current_correction_masks( ...
-            ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
-    end
-
+    went_back = false;
+    structures = { ...
+        'LV endocardium', 'r', 'Lendo'; ...
+        'RV endocardium', 'c', 'Rendo'; ...
+        'Epicardium', 'g', 'Epi'};
     if has_lepi
-        current_mask = lepi(display_crop.rows, display_crop.columns, k);
-        [new_mask, did_update, replace_entire_slice, display_dirty] = correct_one_mask( ...
-            ax, display_image, current_mask, 'LV epicardium', 'b', gs_range, pixel_spacing);
+        structures(end + 1, :) = {'LV epicardium', 'b', 'lepi'};
+    end
+    masks = struct('Lendo', Lendo, 'Rendo', Rendo, 'Epi', Epi, 'lepi', lepi);
+
+    index = 1;
+    while index <= size(structures, 1)
+        structure_name = structures{index, 1};
+        color = structures{index, 2};
+        field = structures{index, 3};
+        current_mask = masks.(field)(display_crop.rows, display_crop.columns, k);
+        [new_mask, did_update, replace_entire_slice, display_dirty, component_details, go_back] = ...
+            correct_one_mask( ...
+                ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing);
+        if go_back
+            if index == 1
+                went_back = true;
+                return;
+            end
+            index = index - 1;
+            show_current_correction_masks( ...
+                ax, display_image, k, masks.Lendo, masks.Rendo, masks.Epi, masks.lepi, ...
+                has_lepi, display_crop, gs_range);
+            continue;
+        end
+        if ~strcmp(field, 'lepi')
+            component_actions = add_component_action( ...
+                component_actions, component_details, k, source_file, field);
+        end
         if did_update
-            lepi(:, :, k) = apply_mask_update( ...
-                lepi(:, :, k), new_mask, display_crop, replace_entire_slice);
+            masks.(field)(:, :, k) = apply_mask_update( ...
+                masks.(field)(:, :, k), new_mask, display_crop, replace_entire_slice);
         end
         if did_update || display_dirty
             show_current_correction_masks( ...
-                ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range);
+                ax, display_image, k, masks.Lendo, masks.Rendo, masks.Epi, masks.lepi, ...
+                has_lepi, display_crop, gs_range);
         end
+        index = index + 1;
     end
+
+    Lendo = masks.Lendo;
+    Rendo = masks.Rendo;
+    Epi = masks.Epi;
+    lepi = masks.lepi;
 end
 
 function show_current_correction_masks( ...
@@ -719,19 +728,22 @@ function actions = add_component_action( ...
 if isempty(details)
     return;
 end
-record = struct( ...
-    'slice_number', slice_number, ...
-    'source_dicom_filename', source_file, ...
-    'structure', structure, ...
-    'original_component_count', details.OriginalComponentCount, ...
-    'action', details.Action, ...
-    'removed_component_areas_pixels', details.RemovedAreasPixels, ...
-    'removed_component_areas_mm2', details.RemovedAreasMm2, ...
-    'filled_hole_areas_pixels', details.FilledHoleAreasPixels, ...
-    'filled_hole_areas_mm2', details.FilledHoleAreasMm2, ...
-    'timestamp', component_timestamp(), ...
-    'final_component_count', details.FinalComponentCount);
-actions(end + 1) = record;
+for detail_index = 1:numel(details)
+    detail = details(detail_index);
+    record = struct( ...
+        'slice_number', slice_number, ...
+        'source_dicom_filename', source_file, ...
+        'structure', structure, ...
+        'original_component_count', detail.OriginalComponentCount, ...
+        'action', detail.Action, ...
+        'removed_component_areas_pixels', detail.RemovedAreasPixels, ...
+        'removed_component_areas_mm2', detail.RemovedAreasMm2, ...
+        'filled_hole_areas_pixels', detail.FilledHoleAreasPixels, ...
+        'filled_hole_areas_mm2', detail.FilledHoleAreasMm2, ...
+        'timestamp', component_timestamp(), ...
+        'final_component_count', detail.FinalComponentCount);
+    actions(end + 1) = record; %#ok<AGROW>
+end
 end
 
 function combined = append_component_actions(existing, added)
@@ -749,27 +761,34 @@ value = char(datetime('now', 'TimeZone', 'UTC', ...
     'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
 end
 
-function [mask, did_update, replace_entire_slice, display_dirty, component_details] = correct_one_mask( ...
-        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
+function [mask, did_update, replace_entire_slice, display_dirty, component_details, go_back] = ...
+        correct_one_mask(ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
 %CORRECT_ONE_MASK Prompt for one structure. display_dirty is true when the
 % chosen action replaced what the axes shows, so the caller must redraw the
 % full slice even if the mask itself did not change (a cancelled edit).
+% go_back is true when Back was chosen; the mask is then returned untouched.
     did_update = false;
     replace_entire_slice = false;
     display_dirty = false;
     component_details = [];
+    go_back = false;
     mask = logical(current_mask);
 
     figure_handle = ancestor(ax, 'figure');
     emphasize_review_structure(figure_handle, ax, structure_name, color);
     action = choose_review_action(figure_handle, ...
         sprintf('%s action', structure_name), ...
-        {'Keep', 'keep'; 'Edit', 'edit'; 'Components', 'components'; ...
-         'Redraw', 'redraw'; 'Clear', 'clear'}, ...
+        {'Keep', 'keep'; 'Edit', 'edit'; 'Redraw', 'redraw'; ...
+         'Clear', 'clear'; 'Back', 'back'}, ...
         review_structure_text_color(color));
     restore_review_emphasis(figure_handle, ax);
 
     if strcmp(action, 'keep') || strcmp(action, 'cancel')
+        return;
+    end
+
+    if strcmp(action, 'back')
+        go_back = true;
         return;
     end
 
@@ -781,14 +800,7 @@ function [mask, did_update, replace_entire_slice, display_dirty, component_detai
     end
 
     if strcmp(action, 'edit')
-        [mask, did_update] = edit_existing_mask( ...
-            ax, Im, current_mask, color, gs_range, pixel_spacing);
-        display_dirty = true;
-        return;
-    end
-
-    if strcmp(action, 'components')
-        [mask, did_update, component_details] = review_mask_components( ...
+        [mask, did_update, component_details] = edit_existing_mask( ...
             ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing);
         display_dirty = true;
         return;
@@ -819,7 +831,7 @@ figure_handle = ancestor(ax, 'figure');
 layout = review_layout();
 theme = vtseg.ReviewStyle.theme();
 panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, ...
-    sprintf('Components: %s', structure_name));
+    sprintf('Review Islands: %s', structure_name));
 set(panel, 'FontSize', theme.font_size + 1, ...
     'ForegroundColor', review_structure_text_color(color));
 connectivity_toggle = vtseg.ReviewStyle.toggle(panel, [0.05 0.88 0.43 0.08], ...
@@ -861,7 +873,7 @@ end
 show_component_before_after( ...
     ax, Im, original_mask, staged_mask, structure_name, color, gs_range);
 confirmation = choose_review_action(figure_handle, ...
-    'Apply component cleanup?', ...
+    'Apply island changes?', ...
     {'Keep changes', 'keep'; 'Discard changes', 'discard'});
 if ~strcmp(confirmation, 'keep')
     return;
@@ -1086,10 +1098,16 @@ theme = vtseg.ReviewStyle.theme();
 title(ax, panel_title, 'FontWeight', 'bold', 'FontSize', 11, 'Color', theme.text);
 end
 
-function [mask, did_update] = edit_existing_mask( ...
-        ax, Im, current_mask, color, gs_range, pixel_spacing)
-mask = logical(current_mask);
+function [mask, did_update, details] = edit_existing_mask( ...
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
+%EDIT_EXISTING_MASK Drag handles on the mask boundary. Review Islands applies
+% any pending handle moves, opens the island/hole panel on the result, and
+% then reopens the editor so the user can keep editing or accept. Cancel
+% returns the mask that entered the editor, whatever happened in between.
+original_mask = logical(current_mask);
+mask = original_mask;
 did_update = false;
+details = [];
 default_spacing_mm = 8;
 default_max_handles = 64;
 handle_spacing_mm = default_spacing_mm;
@@ -1105,18 +1123,12 @@ if isempty(contours)
     return;
 end
 
-[display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
-cla(ax);
-imshow(Im, display_gs_range, 'Parent', ax);
-hold(ax, 'on');
-
 figure_handle = ancestor(ax, 'figure');
-setappdata(figure_handle, 'vtsegContourEditAction', '');
-rois = cell(numel(contours), 1);
-reference_handles = cell(numel(contours), 1);
 layout = review_layout();
 theme = vtseg.ReviewStyle.theme();
-edit_panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, 'Edit contour');
+edit_panel = gobjects(0);
+rois = {};
+reference_handles = {};
 edit_controls = gobjects(0);
 spacing_slider = gobjects(0);
 max_slider = gobjects(0);
@@ -1126,60 +1138,70 @@ spacing_label = gobjects(0);
 spacing_value = gobjects(0);
 tolerance_value = gobjects(0);
 max_value = gobjects(0);
-rebuild_controls();
-uiwait(figure_handle);
+contour_width = 1;
 
-if ~isvalid(figure_handle)
-    return;
-end
-action = getappdata(figure_handle, 'vtsegContourEditAction');
-edited_contours = contours;
-kept = false(numel(rois), 1);
-if strcmp(action, 'accept')
-    for index = 1:numel(rois)
-        if ~isempty(rois{index}) && isvalid(rois{index}) && size(rois{index}.Position, 1) >= 3
-            edited_contours(index).Position = rois{index}.Position;
-            kept(index) = true;
+while true
+    [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
+    cla(ax);
+    imshow(Im, display_gs_range, 'Parent', ax);
+    hold(ax, 'on');
+    setappdata(figure_handle, 'vtsegContourEditAction', '');
+    edit_panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, 'Edit contour');
+    rebuild_controls();
+    uiwait(figure_handle);
+
+    if ~isvalid(figure_handle)
+        mask = original_mask;
+        did_update = false;
+        details = [];
+        return;
+    end
+    action = getappdata(figure_handle, 'vtsegContourEditAction');
+    edited_contours = contours;
+    kept = false(numel(rois), 1);
+    if ~strcmp(action, 'cancel')
+        for index = 1:numel(rois)
+            if ~isempty(rois{index}) && isvalid(rois{index}) && size(rois{index}.Position, 1) >= 3
+                edited_contours(index).Position = rois{index}.Position;
+                kept(index) = true;
+            end
         end
     end
-end
-for index = 1:numel(rois)
-    if ~isempty(rois{index}) && isvalid(rois{index})
-        delete(rois{index});
+    clear_edit_rois();
+    if isappdata(figure_handle, 'vtsegActiveEditRois')
+        rmappdata(figure_handle, 'vtsegActiveEditRois');
     end
-    if ~isempty(reference_handles{index}) && isvalid(reference_handles{index})
-        delete(reference_handles{index});
+    if isappdata(figure_handle, 'vtsegActiveEditReferenceHandles')
+        rmappdata(figure_handle, 'vtsegActiveEditReferenceHandles');
     end
-end
-if isappdata(figure_handle, 'vtsegActiveEditRois')
-    rmappdata(figure_handle, 'vtsegActiveEditRois');
-end
-if isappdata(figure_handle, 'vtsegActiveEditReferenceHandles')
-    rmappdata(figure_handle, 'vtsegActiveEditReferenceHandles');
-end
-if isvalid(edit_panel)
-    delete(edit_panel);
-end
-if ~strcmp(action, 'accept')
-    return;
-end
+    if isvalid(edit_panel)
+        delete(edit_panel);
+    end
 
-try
-    [dense_contours, moved] = vtseg.deform_editable_contours(contours, edited_contours);
-catch deform_error
-    % Never let an edit take the whole review session down. Fall back to the
-    % edited polygons themselves and say so.
-    warning('vtseg:EditDeformFallback', ...
-        'Could not deform the dense boundary (%s). Using the edited polygons directly.', ...
-        deform_error.message);
-    dense_contours = edited_contours;
-    moved = true;
+    if strcmp(action, 'cancel')
+        mask = original_mask;
+        did_update = false;
+        details = [];
+        return;
+    end
+
+    mask = apply_handle_edits(mask, contours, edited_contours, kept, size(Im));
+
+    if strcmp(action, 'islands')
+        [mask, ~, island_details] = review_mask_components( ...
+            ax, Im, mask, structure_name, color, gs_range, pixel_spacing);
+        if ~isempty(island_details)
+            details = [details; island_details(:)]; %#ok<AGROW>
+        end
+        if ~any(mask(:))
+            fprintf('Every component was removed; accepting the empty mask.\n');
+            break;
+        end
+        continue;
+    end
+    break;
 end
-if ~moved && all(kept)
-    return;
-end
-mask = vtseg.editable_contours_to_mask(dense_contours(kept), size(Im));
-did_update = true;
+did_update = ~isequal(mask, original_mask);
 
     function rebuild_controls()
         clear_edit_rois();
@@ -1329,11 +1351,13 @@ did_update = true;
 
     function show_edit_home()
         clear_edit_controls();
-        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.74 0.88 0.17], ...
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.81 0.88 0.13], ...
             'Drag the visible handles to adjust this existing contour.', 'left', true));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.52 0.88 0.14], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.64 0.88 0.12], ...
             density_summary(), @(~, ~) show_density_controls(), 'neutral'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.25 0.88 0.15], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.49 0.88 0.12], ...
+            'Review Islands', @(~, ~) finish_contour_edit(figure_handle, 'islands'), 'neutral'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.22 0.88 0.15], ...
             'Accept contour edits', @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary'));
         add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.12], ...
             'Cancel', @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral'));
@@ -1389,6 +1413,26 @@ if isvalid(figure_handle)
     setappdata(figure_handle, 'vtsegContourEditAction', action);
     uiresume(figure_handle);
 end
+end
+
+function mask = apply_handle_edits(mask, contours, edited_contours, kept, image_size)
+%APPLY_HANDLE_EDITS Rasterize moved handles onto the dense boundary. A mask
+% whose handles were neither moved nor deleted comes back unchanged.
+try
+    [dense_contours, moved] = vtseg.deform_editable_contours(contours, edited_contours);
+catch deform_error
+    % Never let an edit take the whole review session down. Fall back to the
+    % edited polygons themselves and say so.
+    warning('vtseg:EditDeformFallback', ...
+        'Could not deform the dense boundary (%s). Using the edited polygons directly.', ...
+        deform_error.message);
+    dense_contours = edited_contours;
+    moved = true;
+end
+if ~moved && all(kept)
+    return;
+end
+mask = vtseg.editable_contours_to_mask(dense_contours(kept), image_size);
 end
 
 function set_active_edit_roi_visibility(figure_handle, is_visible)

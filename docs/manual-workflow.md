@@ -579,7 +579,13 @@ the choice applies to:
   slice: one by one, before and after side by side, stepping with **Previous
   slice** / **Next slice** or the arrow keys, or **Show all slices** as tiles
   with the old outline white and dashed over the new one; clicking a tile
-  opens that slice. Accepted offsets are recorded, one line per slice,
+  opens that slice. **Scope** also works in **One stretch** mode: the stretch
+  is carried to each other slice by moving its two ends and its middle point
+  by how far the LV centre moved, then snapping them to that slice's outline,
+  so a free-wall stretch stays on the free wall rather than jumping to the
+  septal side of the RV. A slice where the moved points give no valid
+  stretch, typically a small apical RV, is skipped and named in the command
+  window; check the scope with **Compare slices** first. Accepted offsets are recorded, one line per slice,
   in `work/mask_offset_audit.json`. Growth stops at
   neighbouring structures: the LV and RV cavities stop at each other and at
   the outside of Epi, and Epi never shrinks into either cavity. The usual

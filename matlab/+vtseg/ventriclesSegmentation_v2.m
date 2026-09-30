@@ -710,11 +710,11 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records]
         current_mask = masks.(field)(display_crop.rows, display_crop.columns, k);
         limits = slice_offset_limits(field, masks, display_crop, k);
         slice_info = struct('slice', k, 'count', slice_count, ...
-            'summarize', @(offset_mm, slices) summarize_other_slices( ...
-                masks, field, slices, pixel_spacing, offset_mm), ...
-            'compare', @(offset_mm, slices, preview) compare_offset_preview( ...
+            'summarize', @(offset_mm, slices, spec) summarize_other_slices( ...
+                masks, field, slices, pixel_spacing, offset_mm, spec, k, display_crop), ...
+            'compare', @(offset_mm, slices, preview, spec) compare_offset_preview( ...
                 ax, path_image, slice_files, masks, field, k, slices, preview, ...
-                pixel_spacing, offset_mm, has_lepi, display_crop, gs_range));
+                pixel_spacing, offset_mm, spec, has_lepi, display_crop, gs_range));
         [new_mask, did_update, replace_entire_slice, display_dirty, component_details, go_back, ...
             offset_requests] = correct_one_mask( ...
                 ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing, ...
@@ -744,8 +744,13 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records]
             offset_records = [offset_records; offset_record( ...
                 request, field, k, k, source_file, request.CurrentInfo)]; %#ok<AGROW>
             if ~isempty(request.Slices)
-                [masks.(field), slice_details] = vtseg.offset_mask_slices( ...
-                    masks, field, request.Slices, pixel_spacing, request.OffsetMm);
+                spec = [];
+                if strcmp(request.Mode, 'stretch')
+                    spec = struct('Points', request.StretchPoints, 'FadeMm', request.FadeMm);
+                end
+                [masks.(field), slice_details] = offset_other_slices( ...
+                    masks, field, request.Slices, pixel_spacing, request.OffsetMm, ...
+                    spec, k, display_crop);
                 for detail = slice_details(:)'
                     if detail.Changed
                         offset_records = [offset_records; offset_record( ...
@@ -783,18 +788,34 @@ limits = vtseg.mask_offset_limits(field, crop(masks.Lendo), crop(masks.Rendo), .
     crop(masks.Epi), lepi);
 end
 
-function details = summarize_other_slices(masks, field, slices, pixel_spacing, offset_mm)
-%SUMMARIZE_OTHER_SLICES What a whole-outline offset would do on other slices.
-[~, details] = vtseg.offset_mask_slices(masks, field, slices, pixel_spacing, offset_mm);
+function details = summarize_other_slices(masks, field, slices, pixel_spacing, offset_mm, ...
+        spec, k, display_crop)
+%SUMMARIZE_OTHER_SLICES What an offset would do on other slices.
+[~, details] = offset_other_slices(masks, field, slices, pixel_spacing, offset_mm, ...
+    spec, k, display_crop);
+end
+
+function [stack, details] = offset_other_slices(masks, field, slices, pixel_spacing, ...
+        offset_mm, spec, k, display_crop)
+%OFFSET_OTHER_SLICES Whole-outline offset when spec is empty; otherwise carry
+% the stretch in spec (points in cropped coordinates) from slice k.
+if isempty(spec)
+    [stack, details] = vtseg.offset_mask_slices(masks, field, slices, pixel_spacing, offset_mm);
+    return;
+end
+full_points = spec.Points + [display_crop.columns(1) - 1, display_crop.rows(1) - 1];
+[stack, details] = vtseg.offset_mask_stretch_slices(masks, field, slices, pixel_spacing, ...
+    full_points, k, offset_mm, spec.FadeMm);
 end
 
 function compare_offset_preview(ax, path_image, slice_files, masks, field, k, slices, ...
-        preview, pixel_spacing, offset_mm, has_lepi, display_crop, gs_range)
-%COMPARE_OFFSET_PREVIEW Before/after of a pending whole-outline offset on every
-% slice of its scope, before it is applied. preview is the current slice's
-% cropped preview; the other slices get the offset they would receive.
+        preview, pixel_spacing, offset_mm, spec, has_lepi, display_crop, gs_range)
+%COMPARE_OFFSET_PREVIEW Before/after of a pending offset on every slice of its
+% scope, before it is applied. preview is the current slice's cropped
+% preview; the other slices get the offset they would receive.
 after = masks;
-after.(field) = vtseg.offset_mask_slices(masks, field, slices, pixel_spacing, offset_mm);
+after.(field) = offset_other_slices(masks, field, slices, pixel_spacing, offset_mm, ...
+    spec, k, display_crop);
 after.(field)(:, :, k) = apply_mask_update( ...
     masks.(field)(:, :, k), preview, display_crop, false);
 show_multi_slice_comparison(ax, path_image, struct('name', slice_files), ...
@@ -810,9 +831,14 @@ records = records(:);
 end
 
 function record = offset_record(request, field, slice_number, set_on_slice, source_file, info)
+% A carried stretch has its own length on each slice.
+stretch_length = request.StretchLengthMm;
+if isfield(info, 'StretchLengthMm') && ~isnan(info.StretchLengthMm)
+    stretch_length = info.StretchLengthMm;
+end
 record = struct('slice_number', slice_number, 'source_dicom_filename', source_file, ...
     'structure', field, 'mode', request.Mode, 'offset_mm', request.OffsetMm, ...
-    'fade_mm', request.FadeMm, 'stretch_length_mm', request.StretchLengthMm, ...
+    'fade_mm', request.FadeMm, 'stretch_length_mm', stretch_length, ...
     'set_on_slice', set_on_slice, 'added_pixels', info.AddedPixels, ...
     'removed_pixels', info.RemovedPixels, 'blocked_pixels', info.BlockedPixels, ...
     'area_change_mm2', info.AreaChangeMm2, 'timestamp', component_timestamp());
@@ -1269,7 +1295,7 @@ end
 
 function requests = empty_offset_requests()
 requests = struct('Mode', {}, 'OffsetMm', {}, 'FadeMm', {}, 'StretchLengthMm', {}, ...
-    'Slices', {}, 'CurrentInfo', {});
+    'Slices', {}, 'CurrentInfo', {}, 'StretchPoints', {});
 requests = requests(:);
 end
 
@@ -1281,9 +1307,11 @@ function [mask, request] = review_mask_offset( ...
 % Fade length at both ends. Growth stops at neighbouring structures
 % (limits.blocked) and a shrink never removes a structure inside
 % (limits.protected). Apply returns the preview; Cancel returns the mask.
-% In Whole outline mode, Scope extends the offset to a slice range or to
-% all slices; request then lists the other slices, which the caller changes
-% once this structure is accepted. The current slice is always included.
+% Scope extends the offset to a slice range or to all slices, in either
+% mode; request then lists the other slices, which the caller changes once
+% this structure is accepted. The current slice is always included. A
+% stretch is carried to other slices by its two ends and its middle point
+% (request.StretchPoints, in the cropped image's coordinates).
 if nargin < 9
     slice_info = struct('slice', 1, 'count', 1, 'summarize', []);
 end
@@ -1311,34 +1339,36 @@ panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, ...
     sprintf('Grow / shrink: %s', structure_name));
 set(panel, 'FontSize', theme.font_size + 1, ...
     'ForegroundColor', review_structure_text_color(color));
-mode_toggle = vtseg.ReviewStyle.toggle(panel, [0.05 0.89 0.90 0.08], ...
+mode_toggle = vtseg.ReviewStyle.toggle(panel, [0.05 0.90 0.90 0.07], ...
     'Whole outline', 0, @(~, ~) toggle_mode());
-value_label = vtseg.ReviewStyle.label(panel, [0.05 0.80 0.90 0.08], '', 'center', false);
-offset_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.72 0.90 0.07], ...
+value_label = vtseg.ReviewStyle.label(panel, [0.05 0.83 0.90 0.06], '', 'center', false);
+offset_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.76 0.90 0.06], ...
     -max_mm, max_mm, 0, [step_mm, 2 * step_mm] ./ (2 * max_mm), @(~, ~) on_slider());
-vtseg.ReviewStyle.button(panel, [0.05 0.61 0.43 0.09], ...
+vtseg.ReviewStyle.button(panel, [0.05 0.66 0.43 0.08], ...
     sprintf('Shrink %.1f mm', step_mm), @(~, ~) nudge(-step_mm), 'neutral');
-vtseg.ReviewStyle.button(panel, [0.52 0.61 0.43 0.09], ...
+vtseg.ReviewStyle.button(panel, [0.52 0.66 0.43 0.08], ...
     sprintf('Grow %.1f mm', step_mm), @(~, ~) nudge(step_mm), 'neutral');
-fade_label = vtseg.ReviewStyle.label(panel, [0.05 0.52 0.55 0.07], '', 'left', false);
-reset_button = vtseg.ReviewStyle.button(panel, [0.62 0.52 0.33 0.08], ...
-    'Reset points', @(~, ~) reset_points(), 'neutral');
-fade_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.45 0.90 0.06], ...
-    0, max_fade_mm, fade_mm, [1, 5] ./ max_fade_mm, @(~, ~) on_fade());
-scope_button = vtseg.ReviewStyle.button(panel, [0.05 0.52 0.55 0.08], ...
+scope_button = vtseg.ReviewStyle.button(panel, [0.05 0.57 0.55 0.08], ...
     'Scope: this slice', @(~, ~) cycle_scope(), 'neutral');
-from_field = vtseg.ReviewStyle.field(panel, [0.62 0.52 0.15 0.08], ...
+from_field = vtseg.ReviewStyle.field(panel, [0.62 0.57 0.15 0.08], ...
     num2str(range_from), @(~, ~) on_range());
-to_field = vtseg.ReviewStyle.field(panel, [0.80 0.52 0.15 0.08], ...
+to_field = vtseg.ReviewStyle.field(panel, [0.80 0.57 0.15 0.08], ...
     num2str(range_to), @(~, ~) on_range());
-range_label = vtseg.ReviewStyle.label(panel, [0.05 0.43 0.90 0.08], '', 'left', true);
+% The row below Scope shows the range in Whole outline mode and the fade
+% controls in One stretch mode.
+range_label = vtseg.ReviewStyle.label(panel, [0.05 0.48 0.90 0.07], '', 'left', true);
+fade_label = vtseg.ReviewStyle.label(panel, [0.05 0.48 0.22 0.07], '', 'left', false);
+fade_slider = vtseg.ReviewStyle.slider(panel, [0.28 0.49 0.38 0.06], ...
+    0, max_fade_mm, fade_mm, [1, 5] ./ max_fade_mm, @(~, ~) on_fade());
+reset_button = vtseg.ReviewStyle.button(panel, [0.68 0.48 0.27 0.08], ...
+    'Reset points', @(~, ~) reset_points(), 'neutral');
 if isempty(slice_info.summarize) || slice_info.count <= 1
     set(scope_button, 'Enable', 'off');
 end
-status_label = vtseg.ReviewStyle.label(panel, [0.05 0.23 0.90 0.19], '', 'left', true);
-compare_button = vtseg.ReviewStyle.button(panel, [0.05 0.12 0.43 0.10], 'Compare slices', ...
+status_label = vtseg.ReviewStyle.label(panel, [0.05 0.22 0.90 0.25], '', 'left', true);
+compare_button = vtseg.ReviewStyle.button(panel, [0.05 0.12 0.43 0.09], 'Compare slices', ...
     @(~, ~) compare_slices(), 'neutral');
-apply_button = vtseg.ReviewStyle.button(panel, [0.52 0.12 0.43 0.10], 'Apply', ...
+apply_button = vtseg.ReviewStyle.button(panel, [0.52 0.12 0.43 0.09], 'Apply', ...
     @(~, ~) finish_offset('apply'), 'primary');
 vtseg.ReviewStyle.button(panel, [0.05 0.03 0.90 0.08], 'Cancel', ...
     @(~, ~) finish_offset('cancel'), 'neutral');
@@ -1357,12 +1387,14 @@ if strcmp(action, 'apply') && offset_mm ~= 0 && any(preview(:))
     mask = preview;
     others = other_slices();
     request = struct('Mode', 'whole', 'OffsetMm', offset_mm, 'FadeMm', NaN, ...
-        'StretchLengthMm', NaN, 'Slices', others, 'CurrentInfo', info);
+        'StretchLengthMm', NaN, 'Slices', others, 'CurrentInfo', info, 'StretchPoints', []);
     description = 'whole outline';
     if stretch_mode
+        spec = stretch_spec();
         request.Mode = 'stretch';
         request.FadeMm = fade_mm;
         request.StretchLengthMm = stretch.LengthMm;
+        request.StretchPoints = spec.Points;
         description = sprintf('%.0f mm stretch, %.0f mm fade', stretch.LengthMm, fade_mm);
     end
     fprintf('%s: %+.1f mm applied to the %s (%+.0f mm^2).\n', structure_name, offset_mm, ...
@@ -1374,11 +1406,8 @@ if strcmp(action, 'apply') && offset_mm ~= 0 && any(preview(:))
 end
 
     function slices = other_slices()
-        % Slices besides the current one that a whole-outline offset covers.
+        % Slices besides the current one that the scope covers.
         slices = [];
-        if stretch_mode
-            return;
-        end
         switch scope
             case 'all'
                 slices = 1:slice_info.count;
@@ -1388,10 +1417,22 @@ end
         slices = setdiff(slices, slice_info.slice);
     end
 
+    function spec = stretch_spec()
+        % How the current stretch is carried to other slices: its two
+        % snapped ends and the point halfway along it, plus the fade. Empty
+        % in Whole outline mode.
+        spec = [];
+        if stretch_mode && ~isempty(stretch)
+            middle = stretch.Points(max(1, round(size(stretch.Points, 1) / 2)), :);
+            spec = struct('Points', [stretch.SnappedPoints(1:2, :); middle], ...
+                'FadeMm', fade_mm);
+        end
+    end
+
     function compare_slices()
         % Show what this offset would do on every slice of the scope,
         % before anything is applied; the panel stays open afterwards.
-        slice_info.compare(offset_mm, other_slices(), preview);
+        slice_info.compare(offset_mm, other_slices(), preview, stretch_spec());
         update_preview();
     end
 
@@ -1481,13 +1522,12 @@ end
         set(value_label, 'String', sprintf('Offset: %+.1f mm', offset_mm));
         set(fade_label, 'String', sprintf('Fade: %d mm', fade_mm));
         stretch_controls = [fade_label, fade_slider, reset_button];
-        scope_controls = [scope_button, from_field, to_field, range_label];
         if stretch_mode
             set(stretch_controls, 'Visible', 'on');
-            set(scope_controls, 'Visible', 'off');
+            set(range_label, 'Visible', 'off');
         else
             set(stretch_controls, 'Visible', 'off');
-            set(scope_controls, 'Visible', 'on');
+            set(range_label, 'Visible', 'on');
         end
         switch scope
             case 'slice'
@@ -1507,13 +1547,16 @@ end
         end
 
         lines = {};
+        if stretch_mode && ~strcmp(scope, 'slice')
+            lines{end + 1} = get(range_label, 'String');
+        end
         preview = original_mask;
         ready = true;
         if ~stretch_mode
             [preview, info] = vtseg.offset_mask(original_mask, pixel_spacing, offset_mm, limits);
         elseif size(picked, 1) < 3
             ready = false;
-            lines = stretch_prompt();
+            lines = [lines, stretch_prompt()];
         else
             try
                 [preview, info, stretch] = vtseg.offset_mask_stretch( ...
@@ -1521,7 +1564,7 @@ end
             catch stretch_failure
                 ready = false;
                 stretch_error = stretch_failure.message;
-                lines = {stretch_error, 'Use Reset points and pick again.'};
+                lines = [lines, {stretch_error, 'Use Reset points and pick again.'}];
             end
         end
 
@@ -1542,7 +1585,7 @@ end
             end
             others = other_slices();
             if ~isempty(others) && offset_mm ~= 0
-                summary = slice_info.summarize(offset_mm, others);
+                summary = slice_info.summarize(offset_mm, others, stretch_spec());
                 line = sprintf('Other slices: %d of %d change, %+.0f mm^2', ...
                     nnz([summary.Changed]), numel(others), sum([summary.AreaChangeMm2]));
                 skipped = nnz(~cellfun(@isempty, {summary.Skipped}));

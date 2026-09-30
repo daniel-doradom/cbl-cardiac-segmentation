@@ -507,7 +507,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                     new_component_actions, went_back, new_offset_records] = correct_slice_masks( ...
                         ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
                         candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range, ...
-                        pixel_spacing, {folder(1:last_segmented_slice).name});
+                        pixel_spacing, {folder(1:last_segmented_slice).name}, path_image);
                 candidate_component_actions = append_component_actions( ...
                     candidate_component_actions, new_component_actions);
                 candidate_offset_records = [candidate_offset_records; new_offset_records]; %#ok<AGROW>
@@ -680,7 +680,7 @@ end
 function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records] = ...
         correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range, ...
-        pixel_spacing, slice_files)
+        pixel_spacing, slice_files, path_image)
 %CORRECT_SLICE_MASKS Prompt for each structure of one slice in order.
 % Back returns to the previous structure. Back on the first structure sets
 % went_back and hands the masks back exactly as they came in. A Grow /
@@ -711,7 +711,10 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records]
         limits = slice_offset_limits(field, masks, display_crop, k);
         slice_info = struct('slice', k, 'count', slice_count, ...
             'summarize', @(offset_mm, slices) summarize_other_slices( ...
-                masks, field, slices, pixel_spacing, offset_mm));
+                masks, field, slices, pixel_spacing, offset_mm), ...
+            'compare', @(offset_mm, slices, preview) compare_offset_preview( ...
+                ax, path_image, slice_files, masks, field, k, slices, preview, ...
+                pixel_spacing, offset_mm, has_lepi, display_crop, gs_range));
         [new_mask, did_update, replace_entire_slice, display_dirty, component_details, go_back, ...
             offset_requests] = correct_one_mask( ...
                 ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing, ...
@@ -783,6 +786,19 @@ end
 function details = summarize_other_slices(masks, field, slices, pixel_spacing, offset_mm)
 %SUMMARIZE_OTHER_SLICES What a whole-outline offset would do on other slices.
 [~, details] = vtseg.offset_mask_slices(masks, field, slices, pixel_spacing, offset_mm);
+end
+
+function compare_offset_preview(ax, path_image, slice_files, masks, field, k, slices, ...
+        preview, pixel_spacing, offset_mm, has_lepi, display_crop, gs_range)
+%COMPARE_OFFSET_PREVIEW Before/after of a pending whole-outline offset on every
+% slice of its scope, before it is applied. preview is the current slice's
+% cropped preview; the other slices get the offset they would receive.
+after = masks;
+after.(field) = vtseg.offset_mask_slices(masks, field, slices, pixel_spacing, offset_mm);
+after.(field)(:, :, k) = apply_mask_update( ...
+    masks.(field)(:, :, k), preview, display_crop, false);
+show_multi_slice_comparison(ax, path_image, struct('name', slice_files), ...
+    sort([k, slices(:)']), k, masks, after, has_lepi, display_crop, gs_range);
 end
 
 function records = empty_offset_records()
@@ -1315,12 +1331,14 @@ from_field = vtseg.ReviewStyle.field(panel, [0.62 0.52 0.15 0.08], ...
     num2str(range_from), @(~, ~) on_range());
 to_field = vtseg.ReviewStyle.field(panel, [0.80 0.52 0.15 0.08], ...
     num2str(range_to), @(~, ~) on_range());
-range_label = vtseg.ReviewStyle.label(panel, [0.05 0.45 0.90 0.06], '', 'left', true);
+range_label = vtseg.ReviewStyle.label(panel, [0.05 0.43 0.90 0.08], '', 'left', true);
 if isempty(slice_info.summarize) || slice_info.count <= 1
     set(scope_button, 'Enable', 'off');
 end
-status_label = vtseg.ReviewStyle.label(panel, [0.05 0.23 0.90 0.21], '', 'left', true);
-apply_button = vtseg.ReviewStyle.button(panel, [0.05 0.12 0.90 0.10], 'Apply', ...
+status_label = vtseg.ReviewStyle.label(panel, [0.05 0.23 0.90 0.19], '', 'left', true);
+compare_button = vtseg.ReviewStyle.button(panel, [0.05 0.12 0.43 0.10], 'Compare slices', ...
+    @(~, ~) compare_slices(), 'neutral');
+apply_button = vtseg.ReviewStyle.button(panel, [0.52 0.12 0.43 0.10], 'Apply', ...
     @(~, ~) finish_offset('apply'), 'primary');
 vtseg.ReviewStyle.button(panel, [0.05 0.03 0.90 0.08], 'Cancel', ...
     @(~, ~) finish_offset('cancel'), 'neutral');
@@ -1368,6 +1386,13 @@ end
                 slices = min(range_from, range_to):max(range_from, range_to);
         end
         slices = setdiff(slices, slice_info.slice);
+    end
+
+    function compare_slices()
+        % Show what this offset would do on every slice of the scope,
+        % before anything is applied; the panel stays open afterwards.
+        slice_info.compare(offset_mm, other_slices(), preview);
+        update_preview();
     end
 
     function cycle_scope()
@@ -1532,6 +1557,12 @@ end
             set(apply_button, 'Enable', 'on');
         else
             set(apply_button, 'Enable', 'off');
+        end
+        if ready && any(preview(:)) && offset_mm ~= 0 && ~isempty(other_slices()) && ...
+                isfield(slice_info, 'compare') && ~isempty(slice_info.compare)
+            set(compare_button, 'Enable', 'on');
+        else
+            set(compare_button, 'Enable', 'off');
         end
 
         [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
@@ -2167,7 +2198,7 @@ images = cell(slice_count, 1);
 content = gobjects(0);
 
 comparison_figure = vtseg.ReviewStyle.newFigure( ...
-    sprintf('Mask correction: compare %d changed slices', slice_count), ...
+    sprintf('Mask correction: compare %d slices', slice_count), ...
     'WindowStyle', 'modal', 'Position', [120 120 1250 640], ...
     'WindowKeyPressFcn', @on_key);
 header = annotation(comparison_figure, 'textbox', [0.05 0.93 0.90 0.05], ...
@@ -2228,7 +2259,7 @@ uiwait(comparison_figure);
 
     function render_all()
         set(header, 'String', sprintf( ...
-            'All %d changed slices: white dashed = before, solid = after. Click a slice to open it.', ...
+            'All %d slices: white dashed = before, solid = after. Click a slice to open it.', ...
             slice_count));
         set([previous_button, next_button], 'Enable', 'off');
         % Pick the column count that gives the largest tiles for this

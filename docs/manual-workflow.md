@@ -568,7 +568,10 @@ the choice applies to:
   **Whole outline** mode, **Scope** cycles through this slice, slices
   from-to (type the range in the two boxes) and all slices; the current
   slice is always included, and the status line shows how many other slices
-  change. The other slices are changed once that structure is accepted,
+  change. **Compare slices**, next to **Apply**, shows what the offset would
+  do on every slice of the scope before anything is applied, in the same
+  viewer as **Compare before/after** below; the panel stays open to adjust
+  the offset. The other slices are changed once that structure is accepted,
   each with its own neighbour stops, and are skipped when they have no such
   mask or a shrink would erase it. Every changed slice then goes through the
   overlap check, **Keep these modifications?** names them, and **Discard**

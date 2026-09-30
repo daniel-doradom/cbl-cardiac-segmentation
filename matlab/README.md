@@ -115,7 +115,16 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   ends on the image, then one point on the side to move: the two ends split
   the outline into two arcs and the third click picks one (yellow). The
   offset is full in the middle and fades to zero over **Fade** (0-20 mm,
-  default 5) at both ends; **Reset points** starts the picking again. Growth stops at
+  default 5) at both ends; **Reset points** starts the picking again. In
+  **Whole outline** mode, **Scope** cycles through this slice, slices
+  from-to (type the range in the two boxes) and all slices; the current
+  slice is always included, and the status line shows how many other slices
+  change. The other slices are changed once that structure is accepted,
+  each with its own neighbour stops, and are skipped when they have no such
+  mask or a shrink would erase it. Every changed slice then goes through the
+  overlap check, **Keep these modifications?** names them, and **Discard**
+  restores all of them. Accepted offsets are recorded, one line per slice,
+  in `work/mask_offset_audit.json`. Growth stops at
   neighbouring structures: the LV and RV cavities stop at each other and at
   the outside of Epi, and Epi never shrinks into either cavity. The usual
   overlap check still runs before the slice is accepted. A pixel moves only

@@ -272,6 +272,7 @@ end
 last_segmented_slice = count - 1;
 save_confirmed = false;
 component_actions = empty_component_actions();
+offset_records = empty_offset_records();
 
 if last_segmented_slice > numel(folder)
     error('Mask stack has %d slices, but only %d DICOM files were found for review.', ...
@@ -281,11 +282,13 @@ end
 if last_segmented_slice > 0
     display_crop = load_display_crop(path_out, size(Epi, 1), size(Epi, 2));
     if lower(lstr) == 'y'
-        [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_and_correct_masks( ...
+        [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_records] = ...
+            review_and_correct_masks( ...
             path_image, folder, last_segmented_slice, gs_range, ...
             Lendo, Rendo, Epi, lepi, true, display_crop);
     else
-        [Lendo, Rendo, Epi, ~, save_confirmed, component_actions] = review_and_correct_masks( ...
+        [Lendo, Rendo, Epi, ~, save_confirmed, component_actions, offset_records] = ...
+            review_and_correct_masks( ...
             path_image, folder, last_segmented_slice, gs_range, ...
             Lendo, Rendo, Epi, [], false, display_crop);
     end
@@ -311,6 +314,7 @@ Epi   = logical(Epi); Lendo = logical(Lendo); Rendo = logical(Rendo);
 myocardium = vtseg.recompute_myocardium(Lendo, Rendo, Epi);
 save(fullfile(path_out, 'myocardium.mat'), 'myocardium');
 vtseg.save_component_review_audit(path_out, component_actions);
+vtseg.save_mask_offset_audit(path_out, offset_records);
 saved = true;
 
 plot_final_segmentation_overview( ...
@@ -339,12 +343,14 @@ function [BW, xj, yj] = draw_polygon_mask(ax, image_handle, color, line_width)
     yj = [position(:, 2); position(1, 2)];
 end
 
-function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_and_correct_masks( ...
+function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_records] = ...
+        review_and_correct_masks( ...
         path_image, folder, last_segmented_slice, gs_range, ...
         Lendo, Rendo, Epi, lepi, has_lepi, display_crop)
 
     save_confirmed = false;
     component_actions = empty_component_actions();
+    offset_records = empty_offset_records();
 
     theme = vtseg.ReviewStyle.theme();
     layout = review_layout();
@@ -480,23 +486,31 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
                 old_lepi = lepi(:, :, k);
             end
 
+            % A Grow / shrink over several slices changes other slices too,
+            % so keep the whole stacks to restore on Discard.
+            backup_Lendo = Lendo;
+            backup_Rendo = Rendo;
+            backup_Epi = Epi;
+            backup_lepi = lepi;
             candidate_Lendo = Lendo;
             candidate_Rendo = Rendo;
             candidate_Epi = Epi;
             candidate_lepi = lepi;
             candidate_component_actions = empty_component_actions();
+            candidate_offset_records = empty_offset_records();
             correction_valid = false;
             modify_abandoned = false;
             set(navigation_controls, 'Enable', 'off');
 
             while ~correction_valid
                 [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi, ...
-                    new_component_actions, went_back] = correct_slice_masks( ...
+                    new_component_actions, went_back, new_offset_records] = correct_slice_masks( ...
                         ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
                         candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range, ...
-                        pixel_spacing, folder(k).name);
+                        pixel_spacing, {folder(1:last_segmented_slice).name});
                 candidate_component_actions = append_component_actions( ...
                     candidate_component_actions, new_component_actions);
+                candidate_offset_records = [candidate_offset_records; new_offset_records]; %#ok<AGROW>
 
                 if ~isvalid(figure_handle)
                     disp('Review window was closed. Masks will not be saved.');
@@ -509,9 +523,21 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
                     break;
                 end
 
-                validation_errors = validate_slice_masks( ...
-                    candidate_Lendo(:, :, k), candidate_Rendo(:, :, k), ...
-                    candidate_Epi(:, :, k));
+                other_slices = changed_other_slices(k, ...
+                    backup_Lendo, backup_Rendo, backup_Epi, ...
+                    candidate_Lendo, candidate_Rendo, candidate_Epi);
+                validation_errors = {};
+                for check_slice = [k, other_slices]
+                    slice_errors = validate_slice_masks( ...
+                        candidate_Lendo(:, :, check_slice), candidate_Rendo(:, :, check_slice), ...
+                        candidate_Epi(:, :, check_slice));
+                    if check_slice ~= k
+                        prefix = sprintf('Slice %d: ', check_slice);
+                        slice_errors = cellfun(@(message) [prefix, message], slice_errors, ...
+                            'UniformOutput', false);
+                    end
+                    validation_errors = [validation_errors, slice_errors]; %#ok<AGROW>
+                end
                 if isempty(validation_errors)
                     correction_valid = true;
                 else
@@ -525,13 +551,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
                         return;
                     end
                     if ~strcmp(invalid_action, 'revise')
-                        candidate_Lendo(:, :, k) = old_Lendo;
-                        candidate_Rendo(:, :, k) = old_Rendo;
-                        candidate_Epi(:, :, k) = old_Epi;
-                        if has_lepi
-                            candidate_lepi(:, :, k) = old_lepi;
-                        end
+                        candidate_Lendo = backup_Lendo;
+                        candidate_Rendo = backup_Rendo;
+                        candidate_Epi = backup_Epi;
+                        candidate_lepi = backup_lepi;
                         candidate_component_actions = empty_component_actions();
+                        candidate_offset_records = empty_offset_records();
                         correction_valid = true;
                     end
                 end
@@ -550,10 +575,18 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
             show_slice_with_masks( ...
                 ax, path_image, folder(k).name, gs_range, k, ...
                 Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
+            other_slices = changed_other_slices(k, ...
+                backup_Lendo, backup_Rendo, backup_Epi, ...
+                candidate_Lendo, candidate_Rendo, candidate_Epi);
+            keep_prompt = 'Keep these modifications?';
+            if ~isempty(other_slices)
+                keep_prompt = sprintf('Keep these modifications? Also slices %s', ...
+                    slice_list_text(other_slices));
+            end
             keep_str = 'compare';
             while strcmp(keep_str, 'compare')
                 keep_str = choose_review_action(figure_handle, ...
-                    'Keep these modifications?', ...
+                    keep_prompt, ...
                     {'Keep changes', 'keep'; 'Compare before/after', 'compare'; ...
                      'Discard changes', 'discard'});
                 if strcmp(keep_str, 'compare')
@@ -577,14 +610,13 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
             if strcmp(keep_str, 'keep')
                 component_actions = append_component_actions( ...
                     component_actions, candidate_component_actions);
+                offset_records = [offset_records; candidate_offset_records]; %#ok<AGROW>
                 k = k + 1;
             else
-                Lendo(:, :, k) = old_Lendo;
-                Rendo(:, :, k) = old_Rendo;
-                Epi(:, :, k) = old_Epi;
-                if has_lepi
-                    lepi(:, :, k) = old_lepi;
-                end
+                Lendo = backup_Lendo;
+                Rendo = backup_Rendo;
+                Epi = backup_Epi;
+                lepi = backup_lepi;
             end
         end
     end
@@ -637,15 +669,22 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions] = review_a
     end
 end
 
-function [Lendo, Rendo, Epi, lepi, component_actions, went_back] = correct_slice_masks( ...
+function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records] = ...
+        correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range, ...
-        pixel_spacing, source_file)
+        pixel_spacing, slice_files)
 %CORRECT_SLICE_MASKS Prompt for each structure of one slice in order.
 % Back returns to the previous structure. Back on the first structure sets
-% went_back and hands the masks back exactly as they came in.
+% went_back and hands the masks back exactly as they came in. A Grow /
+% shrink over several slices is applied to the other slices here, right
+% after its structure is accepted; offset_records lists every applied
+% offset, one record per structure and slice.
 
     component_actions = empty_component_actions();
+    offset_records = empty_offset_records();
     went_back = false;
+    source_file = slice_files{k};
+    slice_count = numel(slice_files);
     structures = { ...
         'LV endocardium', 'r', 'Lendo'; ...
         'RV endocardium', 'c', 'Rendo'; ...
@@ -662,12 +701,17 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back] = correct_slice
         field = structures{index, 3};
         current_mask = masks.(field)(display_crop.rows, display_crop.columns, k);
         limits = slice_offset_limits(field, masks, display_crop, k);
-        [new_mask, did_update, replace_entire_slice, display_dirty, component_details, go_back] = ...
-            correct_one_mask( ...
-                ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing, limits);
+        slice_info = struct('slice', k, 'count', slice_count, ...
+            'summarize', @(offset_mm, slices) summarize_other_slices( ...
+                masks, field, slices, pixel_spacing, offset_mm));
+        [new_mask, did_update, replace_entire_slice, display_dirty, component_details, go_back, ...
+            offset_requests] = correct_one_mask( ...
+                ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing, ...
+                limits, slice_info);
         if go_back
             if index == 1
                 went_back = true;
+                offset_records = empty_offset_records();
                 return;
             end
             index = index - 1;
@@ -683,6 +727,25 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back] = correct_slice
         if did_update
             masks.(field)(:, :, k) = apply_mask_update( ...
                 masks.(field)(:, :, k), new_mask, display_crop, replace_entire_slice);
+        end
+        for request_index = 1:numel(offset_requests)
+            request = offset_requests(request_index);
+            offset_records = [offset_records; offset_record( ...
+                request, field, k, k, source_file, request.CurrentInfo)]; %#ok<AGROW>
+            if ~isempty(request.Slices)
+                [masks.(field), slice_details] = vtseg.offset_mask_slices( ...
+                    masks, field, request.Slices, pixel_spacing, request.OffsetMm);
+                for detail = slice_details(:)'
+                    if detail.Changed
+                        offset_records = [offset_records; offset_record( ...
+                            request, field, detail.Slice, k, slice_files{detail.Slice}, ...
+                            detail)]; %#ok<AGROW>
+                    else
+                        fprintf('Slice %d %s: not changed (%s).\n', detail.Slice, field, ...
+                            skipped_reason(detail));
+                    end
+                end
+            end
         end
         if did_update || display_dirty
             show_current_correction_masks( ...
@@ -707,6 +770,62 @@ if ~isempty(masks.lepi)
 end
 limits = vtseg.mask_offset_limits(field, crop(masks.Lendo), crop(masks.Rendo), ...
     crop(masks.Epi), lepi);
+end
+
+function details = summarize_other_slices(masks, field, slices, pixel_spacing, offset_mm)
+%SUMMARIZE_OTHER_SLICES What a whole-outline offset would do on other slices.
+[~, details] = vtseg.offset_mask_slices(masks, field, slices, pixel_spacing, offset_mm);
+end
+
+function records = empty_offset_records()
+records = struct('slice_number', {}, 'source_dicom_filename', {}, 'structure', {}, ...
+    'mode', {}, 'offset_mm', {}, 'fade_mm', {}, 'stretch_length_mm', {}, ...
+    'set_on_slice', {}, 'added_pixels', {}, 'removed_pixels', {}, ...
+    'blocked_pixels', {}, 'area_change_mm2', {}, 'timestamp', {});
+records = records(:);
+end
+
+function record = offset_record(request, field, slice_number, set_on_slice, source_file, info)
+record = struct('slice_number', slice_number, 'source_dicom_filename', source_file, ...
+    'structure', field, 'mode', request.Mode, 'offset_mm', request.OffsetMm, ...
+    'fade_mm', request.FadeMm, 'stretch_length_mm', request.StretchLengthMm, ...
+    'set_on_slice', set_on_slice, 'added_pixels', info.AddedPixels, ...
+    'removed_pixels', info.RemovedPixels, 'blocked_pixels', info.BlockedPixels, ...
+    'area_change_mm2', info.AreaChangeMm2, 'timestamp', component_timestamp());
+end
+
+function reason = skipped_reason(detail)
+reason = detail.Skipped;
+if isempty(reason)
+    reason = 'smaller than one pixel';
+end
+end
+
+function slices = changed_other_slices(k, old_Lendo, old_Rendo, old_Epi, Lendo, Rendo, Epi)
+%CHANGED_OTHER_SLICES Slices other than k where any of the three stacks differ.
+changed = squeeze(any(any(old_Lendo ~= Lendo | old_Rendo ~= Rendo | old_Epi ~= Epi, 1), 2));
+changed(k) = false;
+slices = find(changed(:))';
+end
+
+function text = slice_list_text(slices)
+%SLICE_LIST_TEXT Compact slice list, e.g. [3 4 5 8] -> '3-5, 8'.
+parts = {};
+run_start = slices(1);
+for index = 2:numel(slices) + 1
+    if index > numel(slices) || slices(index) ~= slices(index - 1) + 1
+        run_end = slices(index - 1);
+        if run_end > run_start
+            parts{end + 1} = sprintf('%d-%d', run_start, run_end); %#ok<AGROW>
+        else
+            parts{end + 1} = sprintf('%d', run_start); %#ok<AGROW>
+        end
+        if index <= numel(slices)
+            run_start = slices(index);
+        end
+    end
+end
+text = strjoin(parts, ', ');
 end
 
 function show_current_correction_masks( ...
@@ -778,8 +897,9 @@ value = char(datetime('now', 'TimeZone', 'UTC', ...
     'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
 end
 
-function [mask, did_update, replace_entire_slice, display_dirty, component_details, go_back] = ...
-        correct_one_mask(ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
+function [mask, did_update, replace_entire_slice, display_dirty, component_details, go_back, ...
+        offset_requests] = correct_one_mask( ...
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits, slice_info)
 %CORRECT_ONE_MASK Prompt for one structure. display_dirty is true when the
 % chosen action replaced what the axes shows, so the caller must redraw the
 % full slice even if the mask itself did not change (a cancelled edit).
@@ -789,9 +909,13 @@ function [mask, did_update, replace_entire_slice, display_dirty, component_detai
     display_dirty = false;
     component_details = [];
     go_back = false;
+    offset_requests = empty_offset_requests();
     mask = logical(current_mask);
     if nargin < 8
         limits = struct();
+    end
+    if nargin < 9
+        slice_info = struct('slice', 1, 'count', 1, 'summarize', []);
     end
 
     figure_handle = ancestor(ax, 'figure');
@@ -820,8 +944,9 @@ function [mask, did_update, replace_entire_slice, display_dirty, component_detai
     end
 
     if strcmp(action, 'edit')
-        [mask, did_update, component_details] = edit_existing_mask( ...
-            ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits);
+        [mask, did_update, component_details, offset_requests] = edit_existing_mask( ...
+            ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, ...
+            limits, slice_info);
         display_dirty = true;
         return;
     end
@@ -1118,16 +1243,33 @@ theme = vtseg.ReviewStyle.theme();
 title(ax, panel_title, 'FontWeight', 'bold', 'FontSize', 11, 'Color', theme.text);
 end
 
-function mask = review_mask_offset( ...
-        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
+function requests = empty_offset_requests()
+requests = struct('Mode', {}, 'OffsetMm', {}, 'FadeMm', {}, 'StretchLengthMm', {}, ...
+    'Slices', {}, 'CurrentInfo', {});
+requests = requests(:);
+end
+
+function [mask, request] = review_mask_offset( ...
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits, slice_info)
 %REVIEW_MASK_OFFSET Grow or shrink by -5..+5 mm with a live preview, either
 % the whole outline or one stretch of it. For a stretch, click its two ends
 % and then one point on the side to move; the offset fades to zero over the
 % Fade length at both ends. Growth stops at neighbouring structures
 % (limits.blocked) and a shrink never removes a structure inside
 % (limits.protected). Apply returns the preview; Cancel returns the mask.
+% In Whole outline mode, Scope extends the offset to a slice range or to
+% all slices; request then lists the other slices, which the caller changes
+% once this structure is accepted. The current slice is always included.
+if nargin < 9
+    slice_info = struct('slice', 1, 'count', 1, 'summarize', []);
+end
+request = empty_offset_requests();
 original_mask = logical(current_mask);
 mask = original_mask;
+scope = 'slice';
+range_from = slice_info.slice;
+range_to = slice_info.slice;
+info = [];
 offset_mm = 0;
 fade_mm = 5;
 preview = original_mask;
@@ -1159,6 +1301,16 @@ reset_button = vtseg.ReviewStyle.button(panel, [0.62 0.52 0.33 0.08], ...
     'Reset points', @(~, ~) reset_points(), 'neutral');
 fade_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.45 0.90 0.06], ...
     0, max_fade_mm, fade_mm, [1, 5] ./ max_fade_mm, @(~, ~) on_fade());
+scope_button = vtseg.ReviewStyle.button(panel, [0.05 0.52 0.55 0.08], ...
+    'Scope: this slice', @(~, ~) cycle_scope(), 'neutral');
+from_field = vtseg.ReviewStyle.field(panel, [0.62 0.52 0.15 0.08], ...
+    num2str(range_from), @(~, ~) on_range());
+to_field = vtseg.ReviewStyle.field(panel, [0.80 0.52 0.15 0.08], ...
+    num2str(range_to), @(~, ~) on_range());
+range_label = vtseg.ReviewStyle.label(panel, [0.05 0.45 0.90 0.06], '', 'left', true);
+if isempty(slice_info.summarize) || slice_info.count <= 1
+    set(scope_button, 'Enable', 'off');
+end
 status_label = vtseg.ReviewStyle.label(panel, [0.05 0.23 0.90 0.21], '', 'left', true);
 apply_button = vtseg.ReviewStyle.button(panel, [0.05 0.12 0.90 0.10], 'Apply', ...
     @(~, ~) finish_offset('apply'), 'primary');
@@ -1177,13 +1329,66 @@ if isvalid(panel)
 end
 if strcmp(action, 'apply') && offset_mm ~= 0 && any(preview(:))
     mask = preview;
-    scope = 'whole outline';
+    others = other_slices();
+    request = struct('Mode', 'whole', 'OffsetMm', offset_mm, 'FadeMm', NaN, ...
+        'StretchLengthMm', NaN, 'Slices', others, 'CurrentInfo', info);
+    description = 'whole outline';
     if stretch_mode
-        scope = sprintf('%.0f mm stretch, %.0f mm fade', stretch.LengthMm, fade_mm);
+        request.Mode = 'stretch';
+        request.FadeMm = fade_mm;
+        request.StretchLengthMm = stretch.LengthMm;
+        description = sprintf('%.0f mm stretch, %.0f mm fade', stretch.LengthMm, fade_mm);
     end
     fprintf('%s: %+.1f mm applied to the %s (%+.0f mm^2).\n', structure_name, offset_mm, ...
-        scope, (nnz(preview) - nnz(original_mask)) * prod(pixel_spacing));
+        description, info.AreaChangeMm2);
+    if ~isempty(others)
+        fprintf('  Also slices %s, once %s is accepted.\n', ...
+            slice_list_text(others), structure_name);
+    end
 end
+
+    function slices = other_slices()
+        % Slices besides the current one that a whole-outline offset covers.
+        slices = [];
+        if stretch_mode
+            return;
+        end
+        switch scope
+            case 'all'
+                slices = 1:slice_info.count;
+            case 'range'
+                slices = min(range_from, range_to):max(range_from, range_to);
+        end
+        slices = setdiff(slices, slice_info.slice);
+    end
+
+    function cycle_scope()
+        switch scope
+            case 'slice'
+                scope = 'range';
+            case 'range'
+                scope = 'all';
+            otherwise
+                scope = 'slice';
+        end
+        update_preview();
+    end
+
+    function on_range()
+        range_from = parse_slice(get(from_field, 'String'), range_from);
+        range_to = parse_slice(get(to_field, 'String'), range_to);
+        set(from_field, 'String', num2str(range_from));
+        set(to_field, 'String', num2str(range_to));
+        update_preview();
+    end
+
+    function value = parse_slice(text, fallback)
+        value = round(str2double(text));
+        if ~isfinite(value)
+            value = fallback;
+        end
+        value = min(slice_info.count, max(1, value));
+    end
 
     function toggle_mode()
         stretch_mode = logical(get(mode_toggle, 'Value'));
@@ -1242,10 +1447,30 @@ end
         stretch_error = '';
         set(value_label, 'String', sprintf('Offset: %+.1f mm', offset_mm));
         set(fade_label, 'String', sprintf('Fade: %d mm', fade_mm));
+        stretch_controls = [fade_label, fade_slider, reset_button];
+        scope_controls = [scope_button, from_field, to_field, range_label];
         if stretch_mode
-            set([fade_slider, reset_button], 'Enable', 'on');
+            set(stretch_controls, 'Visible', 'on');
+            set(scope_controls, 'Visible', 'off');
         else
-            set([fade_slider, reset_button], 'Enable', 'off');
+            set(stretch_controls, 'Visible', 'off');
+            set(scope_controls, 'Visible', 'on');
+        end
+        switch scope
+            case 'slice'
+                set(scope_button, 'String', 'Scope: this slice');
+                set([from_field, to_field], 'Enable', 'off');
+                set(range_label, 'String', sprintf('Slice %d of %d', ...
+                    slice_info.slice, slice_info.count));
+            case 'range'
+                set(scope_button, 'String', 'Scope: slices from-to');
+                set([from_field, to_field], 'Enable', 'on');
+                set(range_label, 'String', sprintf('Slices %d-%d, plus this slice (%d)', ...
+                    min(range_from, range_to), max(range_from, range_to), slice_info.slice));
+            case 'all'
+                set(scope_button, 'String', 'Scope: all slices');
+                set([from_field, to_field], 'Enable', 'off');
+                set(range_label, 'String', sprintf('All %d slices', slice_info.count));
         end
 
         lines = {};
@@ -1281,6 +1506,17 @@ end
             elseif info.ComponentCount > 1
                 lines{end + 1} = sprintf('Now %d pieces: check with Review Islands', ...
                     info.ComponentCount);
+            end
+            others = other_slices();
+            if ~isempty(others) && offset_mm ~= 0
+                summary = slice_info.summarize(offset_mm, others);
+                line = sprintf('Other slices: %d of %d change, %+.0f mm^2', ...
+                    nnz([summary.Changed]), numel(others), sum([summary.AreaChangeMm2]));
+                skipped = nnz(~cellfun(@isempty, {summary.Skipped}));
+                if skipped > 0
+                    line = sprintf('%s, %d skipped', line, skipped);
+                end
+                lines{end + 1} = line;
             end
         end
         set(status_label, 'String', strjoin(lines, newline));
@@ -1338,8 +1574,8 @@ end
     end
 end
 
-function [mask, did_update, details] = edit_existing_mask( ...
-        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
+function [mask, did_update, details, offset_requests] = edit_existing_mask( ...
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits, slice_info)
 %EDIT_EXISTING_MASK Drag handles on the mask boundary. Review Islands and
 % Grow / shrink apply any pending handle moves, open their panel on the
 % result, and then reopen the editor so the user can keep editing or accept.
@@ -1348,6 +1584,10 @@ function [mask, did_update, details] = edit_existing_mask( ...
 if nargin < 8
     limits = struct();
 end
+if nargin < 9
+    slice_info = struct('slice', 1, 'count', 1, 'summarize', []);
+end
+offset_requests = empty_offset_requests();
 original_mask = logical(current_mask);
 mask = original_mask;
 did_update = false;
@@ -1398,6 +1638,7 @@ while true
         mask = original_mask;
         did_update = false;
         details = [];
+        offset_requests = empty_offset_requests();
         return;
     end
     action = getappdata(figure_handle, 'vtsegContourEditAction');
@@ -1426,14 +1667,16 @@ while true
         mask = original_mask;
         did_update = false;
         details = [];
+        offset_requests = empty_offset_requests();
         return;
     end
 
     mask = apply_handle_edits(mask, contours, edited_contours, kept, size(Im));
 
     if strcmp(action, 'offset')
-        mask = review_mask_offset( ...
-            ax, Im, mask, structure_name, color, gs_range, pixel_spacing, limits);
+        [mask, request] = review_mask_offset( ...
+            ax, Im, mask, structure_name, color, gs_range, pixel_spacing, limits, slice_info);
+        offset_requests = [offset_requests; request]; %#ok<AGROW>
         continue;
     end
 

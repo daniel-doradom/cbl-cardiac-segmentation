@@ -1120,16 +1120,24 @@ end
 
 function mask = review_mask_offset( ...
         ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
-%REVIEW_MASK_OFFSET Grow or shrink the whole outline by -5..+5 mm with a live
-% preview. Growth stops at neighbouring structures (limits.blocked) and a
-% shrink never removes a structure inside (limits.protected). Apply returns
-% the preview; Cancel returns the mask unchanged.
+%REVIEW_MASK_OFFSET Grow or shrink by -5..+5 mm with a live preview, either
+% the whole outline or one stretch of it. For a stretch, click its two ends
+% and then one point on the side to move; the offset fades to zero over the
+% Fade length at both ends. Growth stops at neighbouring structures
+% (limits.blocked) and a shrink never removes a structure inside
+% (limits.protected). Apply returns the preview; Cancel returns the mask.
 original_mask = logical(current_mask);
 mask = original_mask;
 offset_mm = 0;
+fade_mm = 5;
 preview = original_mask;
 step_mm = 0.5;
 max_mm = 5;
+max_fade_mm = 20;
+stretch_mode = false;
+picked = zeros(0, 2);
+stretch = [];
+stretch_error = '';
 figure_handle = ancestor(ax, 'figure');
 layout = review_layout();
 theme = vtseg.ReviewStyle.theme();
@@ -1137,17 +1145,24 @@ panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, ...
     sprintf('Grow / shrink: %s', structure_name));
 set(panel, 'FontSize', theme.font_size + 1, ...
     'ForegroundColor', review_structure_text_color(color));
-value_label = vtseg.ReviewStyle.label(panel, [0.05 0.84 0.90 0.10], '', 'center', false);
-offset_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.72 0.90 0.08], ...
+mode_toggle = vtseg.ReviewStyle.toggle(panel, [0.05 0.89 0.90 0.08], ...
+    'Whole outline', 0, @(~, ~) toggle_mode());
+value_label = vtseg.ReviewStyle.label(panel, [0.05 0.80 0.90 0.08], '', 'center', false);
+offset_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.72 0.90 0.07], ...
     -max_mm, max_mm, 0, [step_mm, 2 * step_mm] ./ (2 * max_mm), @(~, ~) on_slider());
-vtseg.ReviewStyle.button(panel, [0.05 0.58 0.43 0.10], ...
+vtseg.ReviewStyle.button(panel, [0.05 0.61 0.43 0.09], ...
     sprintf('Shrink %.1f mm', step_mm), @(~, ~) nudge(-step_mm), 'neutral');
-vtseg.ReviewStyle.button(panel, [0.52 0.58 0.43 0.10], ...
+vtseg.ReviewStyle.button(panel, [0.52 0.61 0.43 0.09], ...
     sprintf('Grow %.1f mm', step_mm), @(~, ~) nudge(step_mm), 'neutral');
-status_label = vtseg.ReviewStyle.label(panel, [0.05 0.31 0.90 0.24], '', 'left', true);
-apply_button = vtseg.ReviewStyle.button(panel, [0.05 0.16 0.90 0.12], 'Apply', ...
+fade_label = vtseg.ReviewStyle.label(panel, [0.05 0.52 0.55 0.07], '', 'left', false);
+reset_button = vtseg.ReviewStyle.button(panel, [0.62 0.52 0.33 0.08], ...
+    'Reset points', @(~, ~) reset_points(), 'neutral');
+fade_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.45 0.90 0.06], ...
+    0, max_fade_mm, fade_mm, [1, 5] ./ max_fade_mm, @(~, ~) on_fade());
+status_label = vtseg.ReviewStyle.label(panel, [0.05 0.23 0.90 0.21], '', 'left', true);
+apply_button = vtseg.ReviewStyle.button(panel, [0.05 0.12 0.90 0.10], 'Apply', ...
     @(~, ~) finish_offset('apply'), 'primary');
-vtseg.ReviewStyle.button(panel, [0.05 0.04 0.90 0.09], 'Cancel', ...
+vtseg.ReviewStyle.button(panel, [0.05 0.03 0.90 0.08], 'Cancel', ...
     @(~, ~) finish_offset('cancel'), 'neutral');
 
 setappdata(figure_handle, 'vtsegOffsetAction', '');
@@ -1162,9 +1177,23 @@ if isvalid(panel)
 end
 if strcmp(action, 'apply') && offset_mm ~= 0 && any(preview(:))
     mask = preview;
-    fprintf('%s: %+.1f mm applied (%+.0f mm^2).\n', structure_name, offset_mm, ...
-        (nnz(preview) - nnz(original_mask)) * prod(pixel_spacing));
+    scope = 'whole outline';
+    if stretch_mode
+        scope = sprintf('%.0f mm stretch, %.0f mm fade', stretch.LengthMm, fade_mm);
+    end
+    fprintf('%s: %+.1f mm applied to the %s (%+.0f mm^2).\n', structure_name, offset_mm, ...
+        scope, (nnz(preview) - nnz(original_mask)) * prod(pixel_spacing));
 end
+
+    function toggle_mode()
+        stretch_mode = logical(get(mode_toggle, 'Value'));
+        if stretch_mode
+            set(mode_toggle, 'String', 'One stretch');
+        else
+            set(mode_toggle, 'String', 'Whole outline');
+        end
+        update_preview();
+    end
 
     function on_slider()
         offset_mm = round(get(offset_slider, 'Value') / step_mm) * step_mm;
@@ -1178,25 +1207,84 @@ end
         update_preview();
     end
 
+    function on_fade()
+        fade_mm = round(get(fade_slider, 'Value'));
+        set(fade_slider, 'Value', fade_mm);
+        update_preview();
+    end
+
+    function reset_points()
+        picked = zeros(0, 2);
+        update_preview();
+    end
+
+    function on_image_click(~, ~)
+        if ~stretch_mode || size(picked, 1) >= 3
+            return;
+        end
+        point = get(ax, 'CurrentPoint');
+        picked(end + 1, :) = point(1, 1:2);
+        update_preview();
+    end
+
+    function lines = stretch_prompt()
+        prompts = {'Click the first end of the stretch.', ...
+            'Click the other end.', ...
+            'Click one point on the side to move.'};
+        lines = {};
+        if size(picked, 1) < 3
+            lines = prompts(size(picked, 1) + 1);
+        end
+    end
+
     function update_preview()
-        [preview, info] = vtseg.offset_mask(original_mask, pixel_spacing, offset_mm, limits);
+        stretch = [];
+        stretch_error = '';
         set(value_label, 'String', sprintf('Offset: %+.1f mm', offset_mm));
-        lines = {sprintf('Area change: %+.0f mm^2', info.AreaChangeMm2)};
-        if info.BlockedPixels > 0
-            lines{end + 1} = sprintf('Stopped at a neighbour: %d px', info.BlockedPixels);
+        set(fade_label, 'String', sprintf('Fade: %d mm', fade_mm));
+        if stretch_mode
+            set([fade_slider, reset_button], 'Enable', 'on');
+        else
+            set([fade_slider, reset_button], 'Enable', 'off');
         end
-        if offset_mm ~= 0 && info.AddedPixels == 0 && info.RemovedPixels == 0 && ...
-                info.BlockedPixels == 0
-            lines{end + 1} = 'Smaller than one pixel: no change';
+
+        lines = {};
+        preview = original_mask;
+        ready = true;
+        if ~stretch_mode
+            [preview, info] = vtseg.offset_mask(original_mask, pixel_spacing, offset_mm, limits);
+        elseif size(picked, 1) < 3
+            ready = false;
+            lines = stretch_prompt();
+        else
+            try
+                [preview, info, stretch] = vtseg.offset_mask_stretch( ...
+                    original_mask, pixel_spacing, picked, offset_mm, fade_mm, limits);
+            catch stretch_failure
+                ready = false;
+                stretch_error = stretch_failure.message;
+                lines = {stretch_error, 'Use Reset points and pick again.'};
+            end
         end
-        can_apply = any(preview(:));
-        if ~can_apply
-            lines{end + 1} = 'This would remove the whole structure.';
-        elseif info.ComponentCount > 1
-            lines{end + 1} = sprintf('Now %d pieces: check with Review Islands', info.ComponentCount);
+
+        if ready
+            lines{end + 1} = sprintf('Area change: %+.0f mm^2', info.AreaChangeMm2);
+            if info.BlockedPixels > 0
+                lines{end + 1} = sprintf('Stopped at a neighbour: %d px', info.BlockedPixels);
+            end
+            if offset_mm ~= 0 && info.AddedPixels == 0 && info.RemovedPixels == 0 && ...
+                    info.BlockedPixels == 0
+                lines{end + 1} = 'Smaller than one pixel: no change';
+            end
+            if ~any(preview(:))
+                lines{end + 1} = 'This would remove the whole structure.';
+            elseif info.ComponentCount > 1
+                lines{end + 1} = sprintf('Now %d pieces: check with Review Islands', ...
+                    info.ComponentCount);
+            end
         end
         set(status_label, 'String', strjoin(lines, newline));
-        if can_apply
+        if ready && any(preview(:))
             set(apply_button, 'Enable', 'on');
         else
             set(apply_button, 'Enable', 'off');
@@ -1204,12 +1292,32 @@ end
 
         [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
         cla(ax);
-        imshow(Im, display_gs_range, 'Parent', ax);
+        image_handle = imshow(Im, display_gs_range, 'Parent', ax);
+        set(image_handle, 'ButtonDownFcn', @on_image_click, 'HitTest', 'on');
         hold(ax, 'on');
         draw_outline(original_mask, [0.62 0.65 0.70], max(0.8, contour_width), '--');
+        if ~isempty(stretch)
+            plot(ax, stretch.Points(:, 1), stretch.Points(:, 2), 'Color', [1.00 0.85 0.10], ...
+                'LineWidth', max(2.5, 2 * contour_width), 'HitTest', 'off');
+        end
         draw_outline(preview, color, max(1.2, contour_width), '-');
-        vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
-            '%s: dashed = before, solid = %+.1f mm preview', structure_name, offset_mm));
+        if ~isempty(picked)
+            marker_colors = [1.00 0.85 0.10; 1.00 0.85 0.10; 0.25 1.00 0.35];
+            for pick_index = 1:size(picked, 1)
+                plot(ax, picked(pick_index, 1), picked(pick_index, 2), 'o', ...
+                    'MarkerSize', 8, 'LineWidth', 2, ...
+                    'MarkerEdgeColor', marker_colors(pick_index, :), 'HitTest', 'off');
+            end
+        end
+        if stretch_mode
+            title_text = sprintf( ...
+                '%s: click ends then side; yellow = stretch, solid = %+.1f mm preview', ...
+                structure_name, offset_mm);
+        else
+            title_text = sprintf( ...
+                '%s: dashed = before, solid = %+.1f mm preview', structure_name, offset_mm);
+        end
+        vtseg.ReviewStyle.axesTitle(ax, title_text);
         drawnow;
     end
 

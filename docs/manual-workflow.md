@@ -557,9 +557,14 @@ the choice applies to:
   choosing **Discard changes** leaves the mask untouched. Small components are
   candidates for review, not automatically errors, because disconnected
   anatomy can be legitimate.
-- **Grow / shrink**, a button inside `edit`, moves the whole outline of the
-  current structure out or in by -5 to +5 mm in 0.5 mm steps, on the current
-  slice, with a live preview (dashed before, solid after). Growth stops at
+- **Grow / shrink**, a button inside `edit`, moves the current structure's
+  outline out or in by -5 to +5 mm in 0.5 mm steps, on the current slice,
+  with a live preview (dashed before, solid after). The toggle at the top
+  chooses **Whole outline** or **One stretch**. For one stretch, click its two
+  ends on the image, then one point on the side to move: the two ends split
+  the outline into two arcs and the third click picks one (yellow). The
+  offset is full in the middle and fades to zero over **Fade** (0-20 mm,
+  default 5) at both ends; **Reset points** starts the picking again. Growth stops at
   neighbouring structures: the LV and RV cavities stop at each other and at
   the outside of Epi, and Epi never shrinks into either cavity. The usual
   overlap check still runs before the slice is accepted. A pixel moves only

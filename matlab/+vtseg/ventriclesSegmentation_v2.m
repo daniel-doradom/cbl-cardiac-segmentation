@@ -1220,6 +1220,7 @@ details = summarize_component_review( ...
                 structure_name, component_connectivity);
         end
         vtseg.ReviewStyle.axesTitle(ax, title_text);
+        apply_review_contour_widths(figure_handle, ax);
         drawnow;
     end
 
@@ -1636,6 +1637,7 @@ end
                 '%s: dashed = before, solid = %+.1f mm preview', structure_name, offset_mm);
         end
         vtseg.ReviewStyle.axesTitle(ax, title_text);
+        apply_review_contour_widths(figure_handle, ax);
         drawnow;
     end
 
@@ -1797,15 +1799,18 @@ did_update = ~isequal(mask, original_mask);
         reference_handles = cell(numel(contours), 1);
         primary = primary_component_index(contours);
         for contour_index = 1:numel(contours)
+            % Show contours decides visibility; the width only needs to be valid.
             reference_handles{contour_index} = plot_edit_reference( ...
-                ax, contours(contour_index), color, contour_width, contour_index ~= primary);
+                ax, contours(contour_index), color, max(0.5, contour_width), ...
+                contour_index ~= primary);
             rois{contour_index} = drawpolygon(ax, ...
                 'Position', contours(contour_index).Position, ...
-                'Color', color, 'LineWidth', contour_width, 'FaceAlpha', 0.10);
+                'Color', color, 'LineWidth', max(0.5, contour_width), 'FaceAlpha', 0.10);
         end
         setappdata(figure_handle, 'vtsegActiveEditRois', rois);
         setappdata(figure_handle, 'vtsegActiveEditReferenceHandles', reference_handles);
         set_active_edit_roi_visibility(figure_handle, contour_width > 0);
+        apply_overlay_visibility(ax);
         show_edit_home();
         if strcmp(handle_mode, 'simplify')
             vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
@@ -2667,12 +2672,35 @@ switch color
 end
 end
 
+function apply_overlay_visibility(ax)
+%APPLY_OVERLAY_VISIBILITY Show contours is the one switch for everything drawn
+% over the image: mask contours, edit handles and their references, and the
+% outlines, stretches and markers of the Review Islands and Grow / shrink
+% panels. Only the image itself stays when it is off.
+if isempty(ax) || ~isvalid(ax)
+    return;
+end
+[~, contour_width] = current_review_display_settings(ax, []);
+children = allchild(ax);
+overlays = children(~strcmp(get(children, 'Type'), 'image'));
+if isempty(overlays)
+    return;
+end
+if contour_width <= 0
+    set(overlays, 'Visible', 'off');
+else
+    set(overlays, 'Visible', 'on');
+end
+end
+
 function apply_review_contour_widths(figure_handle, ax)
-%APPLY_REVIEW_CONTOUR_WIDTHS Give every contour the slider width, then thin
-% every structure except the one a prompt is currently about.
+%APPLY_REVIEW_CONTOUR_WIDTHS Apply Show contours to every overlay, give every
+% contour the slider width, then thin every structure except the one a
+% prompt is currently about.
 if isempty(figure_handle) || ~isvalid(figure_handle)
     return;
 end
+apply_overlay_visibility(ax);
 [~, contour_width] = current_review_display_settings(ax, []);
 contour_handles = findobj(ax, 'Type', 'contour');
 if isempty(contour_handles)

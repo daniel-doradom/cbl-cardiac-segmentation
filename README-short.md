@@ -35,15 +35,21 @@ VT/ECGI work, with as little hand segmentation as possible.
 
 `.backends/`, `.external/`, `data/` and `results/` are ignored by Git.
 
-The scans live on the CBL server, not in the repo: `data/diagnostics` is a
-symlink to the lab's data folder there. After cloning, create it once, with
-the CBL data folder in place of the placeholder:
+The scans live on the CBL server, not in the repo, so there is nothing to
+upload. They are all in one folder:
 
-```bash
-ln -s /path/to/cbl/data/folder data/diagnostics
+```text
+/scratch/dd9585/VT/vtseg-data/diagnostics
 ```
 
-Never commit anything from that folder.
+`data/diagnostics` is a symlink to it. After cloning, create the link once:
+
+```bash
+ln -s /scratch/dd9585/VT/vtseg-data/diagnostics data/diagnostics
+```
+
+Store new studies in that same folder, one folder per case. Never commit
+anything from it.
 
 ## Running a case
 

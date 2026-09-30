@@ -90,15 +90,22 @@ TotalSegmentator stores a validated license in its user configuration.
 
 ### Data
 
-The scans are not stored in this repository. On the CBL server,
-`data/diagnostics` is a symlink to the lab's data folder on that server, so
-every clone reads the same authorized studies without copying them. After
-cloning, create the link once, replacing the placeholder with the CBL data
-folder:
+The scans are not stored in this repository. On the CBL server they live in
+one shared folder, and `data/diagnostics` is a symlink to it, so every clone
+reads the same authorized studies without uploading or copying them:
+
+```text
+/scratch/dd9585/VT/vtseg-data/diagnostics
+```
+
+After cloning, create the link once:
 
 ```bash
-ln -s /path/to/cbl/data/folder data/diagnostics
+ln -s /scratch/dd9585/VT/vtseg-data/diagnostics data/diagnostics
 ```
+
+New studies go into that same folder, one folder per case, so that every
+clone sees them.
 
 Git ignores everything under `data/` except `data/README.md`.
 

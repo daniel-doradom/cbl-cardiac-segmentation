@@ -1,4 +1,8 @@
-function ventriclesSegmentation_v2(path_image,path_out, gs_range)% manual segmentation of ventricles
+function saved = ventriclesSegmentation_v2(path_image,path_out, gs_range)% manual segmentation of ventricles
+% saved is true only when the reviewed masks were written to path_out. Callers
+% must stop when it is false (Quit without saving, Discard review, or a
+% closed window), so no mesh is ever built from an unconfirmed review.
+saved = false;
 vtseg.assert_editable_matlab_path(path_out);
   % gs_range = [-100 2529]; %%% brightness range for showing MRI images
     % gs_range = [400 2200];
@@ -307,6 +311,7 @@ Epi   = logical(Epi); Lendo = logical(Lendo); Rendo = logical(Rendo);
 myocardium = vtseg.recompute_myocardium(Lendo, Rendo, Epi);
 save(fullfile(path_out, 'myocardium.mat'), 'myocardium');
 vtseg.save_component_review_audit(path_out, component_actions);
+saved = true;
 
 plot_final_segmentation_overview( ...
     path_image, folder, last_segmented_slice, gs_range, ...

@@ -56,7 +56,11 @@ vtseg.readdata(raw_path, seg_path);
 
 % Existing masks trigger the legacy review/correction UI and are saved only
 % after its explicit confirmation.
-vtseg.ventriclesSegmentation_v2(raw_path, seg_path, gs_range);
+saved = vtseg.ventriclesSegmentation_v2(raw_path, seg_path, gs_range);
+if ~saved
+    disp('Review was not saved, so the masks are unchanged. Mesh generation stopped.');
+    return;
+end
 
 if run_scar
     vtseg.segmentFatScar(seg_path, raw_path, gs_range);

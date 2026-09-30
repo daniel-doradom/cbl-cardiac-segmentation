@@ -56,7 +56,11 @@ end
 % tool (vtseg.visualize_bivme_lge_masks).
 vtseg.define_review_crop(main_path, gs_range);
 vtseg.readdata(raw_path, seg_path);
-vtseg.ventriclesSegmentation_v2(raw_path, seg_path, gs_range);
+saved = vtseg.ventriclesSegmentation_v2(raw_path, seg_path, gs_range);
+if ~saved
+    disp('Review was not saved, so the masks are unchanged. Mesh generation stopped.');
+    return;
+end
 vtseg.Gen_mesh(seg_path, mesh_path);
 vtseg.iso2meshEP(mesh_path, remesh_path, global_path, 0);
 vtseg.corLoc2Gol(seg_path, remesh_path, global_path);

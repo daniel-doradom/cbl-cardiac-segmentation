@@ -1,5 +1,7 @@
 # VT Segmentation Evaluation
 
+New here? Start with [README-short.md](README-short.md).
+
 This is an experimental, non-clinical environment for measuring how much of a
 manual cardiac segmentation stage can be replaced or reduced while preserving
 the geometry required by a later VT/ECGI workflow. It is intentionally separate

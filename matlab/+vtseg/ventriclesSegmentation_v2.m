@@ -661,9 +661,10 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back] = correct_slice
         color = structures{index, 2};
         field = structures{index, 3};
         current_mask = masks.(field)(display_crop.rows, display_crop.columns, k);
+        limits = slice_offset_limits(field, masks, display_crop, k);
         [new_mask, did_update, replace_entire_slice, display_dirty, component_details, go_back] = ...
             correct_one_mask( ...
-                ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing);
+                ax, display_image, current_mask, structure_name, color, gs_range, pixel_spacing, limits);
         if go_back
             if index == 1
                 went_back = true;
@@ -695,6 +696,17 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back] = correct_slice
     Rendo = masks.Rendo;
     Epi = masks.Epi;
     lepi = masks.lepi;
+end
+
+function limits = slice_offset_limits(field, masks, display_crop, k)
+%SLICE_OFFSET_LIMITS Neighbour limits for one structure on the cropped slice.
+crop = @(stack) logical(stack(display_crop.rows, display_crop.columns, k));
+lepi = [];
+if ~isempty(masks.lepi)
+    lepi = crop(masks.lepi);
+end
+limits = vtseg.mask_offset_limits(field, crop(masks.Lendo), crop(masks.Rendo), ...
+    crop(masks.Epi), lepi);
 end
 
 function show_current_correction_masks( ...
@@ -767,7 +779,7 @@ value = char(datetime('now', 'TimeZone', 'UTC', ...
 end
 
 function [mask, did_update, replace_entire_slice, display_dirty, component_details, go_back] = ...
-        correct_one_mask(ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
+        correct_one_mask(ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
 %CORRECT_ONE_MASK Prompt for one structure. display_dirty is true when the
 % chosen action replaced what the axes shows, so the caller must redraw the
 % full slice even if the mask itself did not change (a cancelled edit).
@@ -778,6 +790,9 @@ function [mask, did_update, replace_entire_slice, display_dirty, component_detai
     component_details = [];
     go_back = false;
     mask = logical(current_mask);
+    if nargin < 8
+        limits = struct();
+    end
 
     figure_handle = ancestor(ax, 'figure');
     emphasize_review_structure(figure_handle, ax, structure_name, color);
@@ -806,7 +821,7 @@ function [mask, did_update, replace_entire_slice, display_dirty, component_detai
 
     if strcmp(action, 'edit')
         [mask, did_update, component_details] = edit_existing_mask( ...
-            ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing);
+            ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits);
         display_dirty = true;
         return;
     end
@@ -1103,12 +1118,128 @@ theme = vtseg.ReviewStyle.theme();
 title(ax, panel_title, 'FontWeight', 'bold', 'FontSize', 11, 'Color', theme.text);
 end
 
+function mask = review_mask_offset( ...
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
+%REVIEW_MASK_OFFSET Grow or shrink the whole outline by -5..+5 mm with a live
+% preview. Growth stops at neighbouring structures (limits.blocked) and a
+% shrink never removes a structure inside (limits.protected). Apply returns
+% the preview; Cancel returns the mask unchanged.
+original_mask = logical(current_mask);
+mask = original_mask;
+offset_mm = 0;
+preview = original_mask;
+step_mm = 0.5;
+max_mm = 5;
+figure_handle = ancestor(ax, 'figure');
+layout = review_layout();
+theme = vtseg.ReviewStyle.theme();
+panel = vtseg.ReviewStyle.section(figure_handle, layout.action_slot, ...
+    sprintf('Grow / shrink: %s', structure_name));
+set(panel, 'FontSize', theme.font_size + 1, ...
+    'ForegroundColor', review_structure_text_color(color));
+value_label = vtseg.ReviewStyle.label(panel, [0.05 0.84 0.90 0.10], '', 'center', false);
+offset_slider = vtseg.ReviewStyle.slider(panel, [0.05 0.72 0.90 0.08], ...
+    -max_mm, max_mm, 0, [step_mm, 2 * step_mm] ./ (2 * max_mm), @(~, ~) on_slider());
+vtseg.ReviewStyle.button(panel, [0.05 0.58 0.43 0.10], ...
+    sprintf('Shrink %.1f mm', step_mm), @(~, ~) nudge(-step_mm), 'neutral');
+vtseg.ReviewStyle.button(panel, [0.52 0.58 0.43 0.10], ...
+    sprintf('Grow %.1f mm', step_mm), @(~, ~) nudge(step_mm), 'neutral');
+status_label = vtseg.ReviewStyle.label(panel, [0.05 0.31 0.90 0.24], '', 'left', true);
+apply_button = vtseg.ReviewStyle.button(panel, [0.05 0.16 0.90 0.12], 'Apply', ...
+    @(~, ~) finish_offset('apply'), 'primary');
+vtseg.ReviewStyle.button(panel, [0.05 0.04 0.90 0.09], 'Cancel', ...
+    @(~, ~) finish_offset('cancel'), 'neutral');
+
+setappdata(figure_handle, 'vtsegOffsetAction', '');
+update_preview();
+uiwait(figure_handle);
+if ~isvalid(figure_handle)
+    return;
+end
+action = getappdata(figure_handle, 'vtsegOffsetAction');
+if isvalid(panel)
+    delete(panel);
+end
+if strcmp(action, 'apply') && offset_mm ~= 0 && any(preview(:))
+    mask = preview;
+    fprintf('%s: %+.1f mm applied (%+.0f mm^2).\n', structure_name, offset_mm, ...
+        (nnz(preview) - nnz(original_mask)) * prod(pixel_spacing));
+end
+
+    function on_slider()
+        offset_mm = round(get(offset_slider, 'Value') / step_mm) * step_mm;
+        set(offset_slider, 'Value', offset_mm);
+        update_preview();
+    end
+
+    function nudge(delta)
+        offset_mm = min(max_mm, max(-max_mm, offset_mm + delta));
+        set(offset_slider, 'Value', offset_mm);
+        update_preview();
+    end
+
+    function update_preview()
+        [preview, info] = vtseg.offset_mask(original_mask, pixel_spacing, offset_mm, limits);
+        set(value_label, 'String', sprintf('Offset: %+.1f mm', offset_mm));
+        lines = {sprintf('Area change: %+.0f mm^2', info.AreaChangeMm2)};
+        if info.BlockedPixels > 0
+            lines{end + 1} = sprintf('Stopped at a neighbour: %d px', info.BlockedPixels);
+        end
+        if offset_mm ~= 0 && info.AddedPixels == 0 && info.RemovedPixels == 0 && ...
+                info.BlockedPixels == 0
+            lines{end + 1} = 'Smaller than one pixel: no change';
+        end
+        can_apply = any(preview(:));
+        if ~can_apply
+            lines{end + 1} = 'This would remove the whole structure.';
+        elseif info.ComponentCount > 1
+            lines{end + 1} = sprintf('Now %d pieces: check with Review Islands', info.ComponentCount);
+        end
+        set(status_label, 'String', strjoin(lines, newline));
+        if can_apply
+            set(apply_button, 'Enable', 'on');
+        else
+            set(apply_button, 'Enable', 'off');
+        end
+
+        [display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
+        cla(ax);
+        imshow(Im, display_gs_range, 'Parent', ax);
+        hold(ax, 'on');
+        draw_outline(original_mask, [0.62 0.65 0.70], max(0.8, contour_width), '--');
+        draw_outline(preview, color, max(1.2, contour_width), '-');
+        vtseg.ReviewStyle.axesTitle(ax, sprintf( ...
+            '%s: dashed = before, solid = %+.1f mm preview', structure_name, offset_mm));
+        drawnow;
+    end
+
+    function draw_outline(outline_mask, line_color, line_width, line_style)
+        boundaries = bwboundaries(outline_mask, 8);
+        for boundary_index = 1:numel(boundaries)
+            boundary = boundaries{boundary_index};
+            plot(ax, boundary(:, 2), boundary(:, 1), 'Color', line_color, ...
+                'LineWidth', line_width, 'LineStyle', line_style, 'HitTest', 'off');
+        end
+    end
+
+    function finish_offset(action_name)
+        if isvalid(figure_handle)
+            setappdata(figure_handle, 'vtsegOffsetAction', action_name);
+            uiresume(figure_handle);
+        end
+    end
+end
+
 function [mask, did_update, details] = edit_existing_mask( ...
-        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing)
-%EDIT_EXISTING_MASK Drag handles on the mask boundary. Review Islands applies
-% any pending handle moves, opens the island/hole panel on the result, and
-% then reopens the editor so the user can keep editing or accept. Cancel
-% returns the mask that entered the editor, whatever happened in between.
+        ax, Im, current_mask, structure_name, color, gs_range, pixel_spacing, limits)
+%EDIT_EXISTING_MASK Drag handles on the mask boundary. Review Islands and
+% Grow / shrink apply any pending handle moves, open their panel on the
+% result, and then reopen the editor so the user can keep editing or accept.
+% Cancel returns the mask that entered the editor, whatever happened between.
+% limits holds the neighbouring structures that stop a grow or shrink.
+if nargin < 8
+    limits = struct();
+end
 original_mask = logical(current_mask);
 mask = original_mask;
 did_update = false;
@@ -1191,6 +1322,12 @@ while true
     end
 
     mask = apply_handle_edits(mask, contours, edited_contours, kept, size(Im));
+
+    if strcmp(action, 'offset')
+        mask = review_mask_offset( ...
+            ax, Im, mask, structure_name, color, gs_range, pixel_spacing, limits);
+        continue;
+    end
 
     if strcmp(action, 'islands')
         [mask, ~, island_details] = review_mask_components( ...
@@ -1356,15 +1493,17 @@ did_update = ~isequal(mask, original_mask);
 
     function show_edit_home()
         clear_edit_controls();
-        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.81 0.88 0.13], ...
+        add_edit_control(vtseg.ReviewStyle.label(edit_panel, [0.06 0.85 0.88 0.11], ...
             'Drag the visible handles to adjust this existing contour.', 'left', true));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.64 0.88 0.12], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.71 0.88 0.11], ...
             density_summary(), @(~, ~) show_density_controls(), 'neutral'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.49 0.88 0.12], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.58 0.88 0.11], ...
             'Review Islands', @(~, ~) finish_contour_edit(figure_handle, 'islands'), 'neutral'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.22 0.88 0.15], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.45 0.88 0.11], ...
+            'Grow / shrink', @(~, ~) finish_contour_edit(figure_handle, 'offset'), 'neutral'));
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.21 0.88 0.14], ...
             'Accept contour edits', @(~, ~) finish_contour_edit(figure_handle, 'accept'), 'primary'));
-        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.12], ...
+        add_edit_control(vtseg.ReviewStyle.button(edit_panel, [0.06 0.06 0.88 0.11], ...
             'Cancel', @(~, ~) finish_contour_edit(figure_handle, 'cancel'), 'neutral'));
     end
 

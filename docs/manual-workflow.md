@@ -557,6 +557,15 @@ the choice applies to:
   choosing **Discard changes** leaves the mask untouched. Small components are
   candidates for review, not automatically errors, because disconnected
   anatomy can be legitimate.
+- **Grow / shrink**, a button inside `edit`, moves the whole outline of the
+  current structure out or in by -5 to +5 mm in 0.5 mm steps, on the current
+  slice, with a live preview (dashed before, solid after). Growth stops at
+  neighbouring structures: the LV and RV cavities stop at each other and at
+  the outside of Epi, and Epi never shrinks into either cavity. The usual
+  overlap check still runs before the slice is accepted. A pixel moves only
+  when its centre comes within the offset, so a step smaller than one pixel,
+  common on MRI, changes nothing. **Apply** reopens the editor with fresh
+  handles; **Cancel** in the editor undoes it together with any other edit.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the slice.

@@ -563,7 +563,7 @@ the choice applies to:
   chooses **Whole outline** or **One stretch**. For one stretch, click its two
   ends on the image, then one point on the side to move: the two ends split
   the outline into two arcs and the third click picks one (yellow). The
-  offset is full in the middle and fades to zero over **Fade** (0-30 mm,
+  offset is full in the middle and fades to zero over **Fade** (0-50 mm,
   default 5) at both ends; **Reset points** starts the picking again. In
   **Whole outline** mode, **Scope** cycles through this slice, slices
   from-to (type the range in the two boxes) and all slices; the current

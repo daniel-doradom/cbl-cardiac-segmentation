@@ -589,7 +589,15 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                     keep_prompt, ...
                     {'Keep changes', 'keep'; 'Compare before/after', 'compare'; ...
                      'Discard changes', 'discard'});
-                if strcmp(keep_str, 'compare')
+                if strcmp(keep_str, 'compare') && ~isempty(other_slices)
+                    show_multi_slice_comparison( ...
+                        ax, path_image, folder, sort([k, other_slices]), k, ...
+                        struct('Lendo', backup_Lendo, 'Rendo', backup_Rendo, ...
+                            'Epi', backup_Epi, 'lepi', backup_lepi), ...
+                        struct('Lendo', candidate_Lendo, 'Rendo', candidate_Rendo, ...
+                            'Epi', candidate_Epi, 'lepi', candidate_lepi), ...
+                        has_lepi, display_crop, gs_range);
+                elseif strcmp(keep_str, 'compare')
                     new_lepi = [];
                     if has_lepi
                         new_lepi = candidate_lepi(:, :, k);
@@ -2137,6 +2145,185 @@ vtseg.ReviewStyle.button(comparison_figure, [0.42 0.02 0.16 0.065], 'Return to d
     @(~, ~) delete(comparison_figure), 'primary');
 
 uiwait(comparison_figure);
+end
+
+function show_multi_slice_comparison(review_ax, path_image, folder, slices, start_slice, ...
+        before, after, has_lepi, display_crop, fallback_gs_range)
+%SHOW_MULTI_SLICE_COMPARISON Before/after for every slice a correction changed.
+% One by one shows before and after side by side, stepping with Previous /
+% Next or the left and right arrow keys. All slices shows one tile per
+% slice, before dashed and after solid on the same image; clicking a tile
+% opens that slice one by one. before and after hold the full stacks.
+[display_gs_range, contour_width] = ...
+    current_review_display_settings(review_ax, fallback_gs_range);
+theme = vtseg.ReviewStyle.theme();
+slice_count = numel(slices);
+position = find(slices == start_slice, 1);
+if isempty(position)
+    position = 1;
+end
+show_all = false;
+images = cell(slice_count, 1);
+content = gobjects(0);
+
+comparison_figure = vtseg.ReviewStyle.newFigure( ...
+    sprintf('Mask correction: compare %d changed slices', slice_count), ...
+    'WindowStyle', 'modal', 'Position', [120 120 1250 640], ...
+    'WindowKeyPressFcn', @on_key);
+header = annotation(comparison_figure, 'textbox', [0.05 0.93 0.90 0.05], ...
+    'String', '', 'Interpreter', 'none', 'HorizontalAlignment', 'center', ...
+    'FontWeight', 'bold', 'FontSize', 12, 'EdgeColor', 'none', 'Color', theme.text);
+previous_button = vtseg.ReviewStyle.button(comparison_figure, [0.14 0.02 0.14 0.065], ...
+    'Previous slice', @(~, ~) step(-1), 'neutral');
+next_button = vtseg.ReviewStyle.button(comparison_figure, [0.30 0.02 0.14 0.065], ...
+    'Next slice', @(~, ~) step(1), 'neutral');
+view_button = vtseg.ReviewStyle.button(comparison_figure, [0.48 0.02 0.18 0.065], ...
+    'Show all slices', @(~, ~) toggle_view(), 'neutral');
+vtseg.ReviewStyle.button(comparison_figure, [0.70 0.02 0.16 0.065], 'Return to decision', ...
+    @(~, ~) delete(comparison_figure), 'primary');
+render();
+uiwait(comparison_figure);
+
+    function image = slice_image(index)
+        if isempty(images{index})
+            raw = read_slice_image(path_image, folder(slices(index)).name);
+            images{index} = raw(display_crop.rows, display_crop.columns);
+        end
+        image = images{index};
+    end
+
+    function masks = slice_masks(stacks, k)
+        masks = {stacks.Lendo(:, :, k), stacks.Rendo(:, :, k), stacks.Epi(:, :, k), []};
+        if has_lepi
+            masks{4} = stacks.lepi(:, :, k);
+        end
+    end
+
+    function render()
+        delete(content(isvalid(content)));
+        content = gobjects(0);
+        if show_all
+            render_all();
+        else
+            render_one();
+        end
+        drawnow;
+    end
+
+    function render_one()
+        k = slices(position);
+        set(header, 'String', sprintf('Slice %d (%d of %d): %s', ...
+            k, position, slice_count, folder(k).name));
+        set([previous_button, next_button], 'Enable', 'on');
+        before_ax = axes(comparison_figure, 'Position', [0.03 0.12 0.46 0.78]);
+        after_ax = axes(comparison_figure, 'Position', [0.51 0.12 0.46 0.78]);
+        content = [before_ax, after_ax];
+        old = slice_masks(before, k);
+        new = slice_masks(after, k);
+        show_comparison_masks(before_ax, slice_image(position), old{:}, has_lepi, ...
+            display_crop, display_gs_range, contour_width, 'Before edit');
+        show_comparison_masks(after_ax, slice_image(position), new{:}, has_lepi, ...
+            display_crop, display_gs_range, contour_width, 'After edit');
+    end
+
+    function render_all()
+        set(header, 'String', sprintf( ...
+            'All %d changed slices: white dashed = before, solid = after. Click a slice to open it.', ...
+            slice_count));
+        set([previous_button, next_button], 'Enable', 'off');
+        % Pick the column count that gives the largest tiles for this
+        % figure and image shape.
+        figure_size = get(comparison_figure, 'Position');
+        image_size = [numel(display_crop.rows), numel(display_crop.columns)];
+        best_scale = 0;
+        columns = 1;
+        for candidate = 1:slice_count
+            candidate_rows = ceil(slice_count / candidate);
+            scale = min(0.96 * figure_size(3) / candidate / image_size(2), ...
+                0.80 * figure_size(4) / candidate_rows / image_size(1));
+            if scale > best_scale
+                best_scale = scale;
+                columns = candidate;
+            end
+        end
+        rows = ceil(slice_count / columns);
+        width = 0.96 / columns;
+        height = 0.80 / rows;
+        colors = {'r', 'c', 'g', 'b'};
+        for index = 1:slice_count
+            k = slices(index);
+            column = mod(index - 1, columns);
+            row = floor((index - 1) / columns);
+            tile = axes(comparison_figure, 'Position', [0.02 + column * width, ...
+                0.91 - (row + 1) * height, width * 0.96, height * 0.88]);
+            content(end + 1) = tile; %#ok<AGROW>
+            image_handle = imshow(slice_image(index), display_gs_range, 'Parent', tile);
+            set(image_handle, 'ButtonDownFcn', @(~, ~) open_slice(index));
+            hold(tile, 'on');
+            old = slice_masks(before, k);
+            new = slice_masks(after, k);
+            for structure = 1:4
+                if isempty(new{structure})
+                    continue;
+                end
+                draw_outline(tile, new{structure}, colors{structure}, ...
+                    max(1, contour_width), '-');
+                % The before outline goes on top, white and dashed, and only
+                % for a structure that changed on this slice.
+                if ~isequal(old{structure}, new{structure})
+                    draw_outline(tile, old{structure}, [1 1 1], 0.9, '--');
+                end
+            end
+            label = sprintf('Slice %d', k);
+            if k == start_slice
+                label = sprintf('Slice %d (this slice)', k);
+            end
+            title(tile, label, 'FontSize', 10, 'Color', theme.text);
+        end
+    end
+
+    function draw_outline(target, mask, line_color, line_width, line_style)
+        boundaries = bwboundaries(mask(display_crop.rows, display_crop.columns), 8);
+        for boundary_index = 1:numel(boundaries)
+            boundary = boundaries{boundary_index};
+            plot(target, boundary(:, 2), boundary(:, 1), 'Color', line_color, ...
+                'LineWidth', line_width, 'LineStyle', line_style, 'HitTest', 'off');
+        end
+    end
+
+    function open_slice(index)
+        position = index;
+        show_all = false;
+        set(view_button, 'String', 'Show all slices');
+        render();
+    end
+
+    function step(delta)
+        if show_all
+            return;
+        end
+        position = mod(position - 1 + delta, slice_count) + 1;
+        render();
+    end
+
+    function toggle_view()
+        show_all = ~show_all;
+        if show_all
+            set(view_button, 'String', 'Show one by one');
+        else
+            set(view_button, 'String', 'Show all slices');
+        end
+        render();
+    end
+
+    function on_key(~, event)
+        switch event.Key
+            case 'leftarrow'
+                step(-1);
+            case 'rightarrow'
+                step(1);
+        end
+    end
 end
 
 function show_comparison_masks( ...

@@ -123,7 +123,11 @@ During correction, use the in-window **Previous**, **Keep / Next**, and
   each with its own neighbour stops, and are skipped when they have no such
   mask or a shrink would erase it. Every changed slice then goes through the
   overlap check, **Keep these modifications?** names them, and **Discard**
-  restores all of them. Accepted offsets are recorded, one line per slice,
+  restores all of them. **Compare before/after** then opens every changed
+  slice: one by one, before and after side by side, stepping with **Previous
+  slice** / **Next slice** or the arrow keys, or **Show all slices** as tiles
+  with the old outline white and dashed over the new one; clicking a tile
+  opens that slice. Accepted offsets are recorded, one line per slice,
   in `work/mask_offset_audit.json`. Growth stops at
   neighbouring structures: the LV and RV cavities stop at each other and at
   the outside of Epi, and Epi never shrinks into either cavity. The usual

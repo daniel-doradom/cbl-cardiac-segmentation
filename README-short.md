@@ -33,9 +33,17 @@ VT/ECGI work, with as little hand segmentation as possible.
 | iso2mesh | `.external/iso2mesh` | meshing |
 | 3D Slicer | your machine | reviewing masks |
 
-`.backends/`, `.external/`, `data/` and `results/` are ignored by Git. Put the
-authorized scans under `data/diagnostics` (a symlink is fine); they must never
-be committed.
+`.backends/`, `.external/`, `data/` and `results/` are ignored by Git.
+
+The scans live on the CBL server, not in the repo: `data/diagnostics` is a
+symlink to the lab's data folder there. After cloning, create it once, with
+the CBL data folder in place of the placeholder:
+
+```bash
+ln -s /path/to/cbl/data/folder data/diagnostics
+```
+
+Never commit anything from that folder.
 
 ## Running a case
 

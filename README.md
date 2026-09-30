@@ -88,6 +88,20 @@ python -m vtseg check-ct-backend
 Do not place a license value in Git-tracked configuration or shell history.
 TotalSegmentator stores a validated license in its user configuration.
 
+### Data
+
+The scans are not stored in this repository. On the CBL server,
+`data/diagnostics` is a symlink to the lab's data folder on that server, so
+every clone reads the same authorized studies without copying them. After
+cloning, create the link once, replacing the placeholder with the CBL data
+folder:
+
+```bash
+ln -s /path/to/cbl/data/folder data/diagnostics
+```
+
+Git ignores everything under `data/` except `data/README.md`.
+
 ## Workflow
 
 Inspect without loading pixels:

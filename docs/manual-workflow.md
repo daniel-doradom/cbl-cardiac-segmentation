@@ -594,9 +594,11 @@ the choice applies to:
   slice, arriving on the slice next to it shows the same change as a
   suggestion: the current outline white and dashed, the suggested one solid,
   and the prompt "Use the change from slice N here?". **Accept** applies it
-  (after the overlap check), **Adjust** opens Modify with the suggestion as
-  the starting point (Discard restores the slice as it was), and **Skip**
-  leaves the slice alone. Nothing is ever applied without one of these
+  (after the overlap check) and moves straight on to the next slice in the
+  direction the chain is going, forward or backward, where the next
+  suggestion appears at once; **Adjust** opens Modify with the suggestion as
+  the starting point (Discard restores the slice as it was, Keep changes
+  also moves on along the chain), and **Skip** leaves the slice alone. Nothing is ever applied without one of these
   choices. A suggestion moves one slice at a time and only while it keeps
   being accepted; Skip stops it on that side, and slices already changed
   through Scope get none. A newer Grow / shrink of the same structure

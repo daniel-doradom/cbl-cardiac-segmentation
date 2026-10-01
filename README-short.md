@@ -82,6 +82,9 @@ and **Back**. Inside **Edit**:
   whole outline or one stretch you pick with three clicks, on this slice or
   on a range of slices. **Compare slices** shows every affected slice before
   you apply it.
+- after a Grow / shrink, the next slice offers the same change as a
+  suggestion to **Accept**, **Adjust** or **Skip**; the **Suggestions**
+  switch in the header turns this off.
 
 Nothing is saved until **Finish review** and **Save reviewed masks**; **Quit
 without saving** stops before meshing.

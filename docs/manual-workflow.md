@@ -593,6 +593,21 @@ the choice applies to:
   when its centre comes within the offset, so a step smaller than one pixel,
   common on MRI, changes nothing. **Apply** reopens the editor with fresh
   handles; **Cancel** in the editor undoes it together with any other edit.
+- **Suggestions from the previous slice.** When a Grow / shrink is kept on a
+  slice, arriving on the slice next to it shows the same change as a
+  suggestion: the current outline white and dashed, the suggested one solid,
+  and the prompt "Use the change from slice N here?". **Accept** applies it
+  (after the overlap check), **Adjust** opens Modify with the suggestion as
+  the starting point (Discard restores the slice as it was), and **Skip**
+  leaves the slice alone. Nothing is ever applied without one of these
+  choices. A suggestion moves one slice at a time and only while it keeps
+  being accepted; Skip stops it on that side, and slices already changed
+  through Scope get none. A newer Grow / shrink of the same structure
+  replaces the older suggestion. The **Suggestions** switch in the header
+  turns them off. Accepted suggestions are marked `accepted_suggestion` in
+  `work/mask_offset_audit.json`, with `set_on_slice` naming the slice the
+  change came from. Only Grow / shrink changes are suggested; handle drags
+  and Review Islands changes are not.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the slice.

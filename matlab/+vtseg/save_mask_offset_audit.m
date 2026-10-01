@@ -7,7 +7,8 @@ function audit_path = save_mask_offset_audit(seg_path, records)
 %   One record per structure and slice changed: slice_number,
 %   source_dicom_filename, structure, mode ('whole' or 'stretch'), offset_mm,
 %   fade_mm, stretch_length_mm, set_on_slice (where the offset was chosen),
-%   added_pixels, removed_pixels, blocked_pixels, area_change_mm2, timestamp.
+%   added_pixels, removed_pixels, blocked_pixels, area_change_mm2, timestamp,
+%   accepted_suggestion (true when taken from a neighbouring slice's suggestion).
 
 seg_path = char(seg_path);
 vtseg.assert_editable_matlab_path(seg_path);
@@ -30,7 +31,7 @@ if isfile(audit_path)
     end
 end
 all_records = [normalize(existing); normalize(records)];
-audit = struct('schema_version', 1, 'updated_at', utc_timestamp(), 'records', all_records);
+audit = struct('schema_version', 2, 'updated_at', utc_timestamp(), 'records', all_records);
 
 file_id = fopen(audit_path, 'w');
 if file_id < 0
@@ -45,7 +46,8 @@ template = struct( ...
     'slice_number', NaN, 'source_dicom_filename', '', 'structure', '', ...
     'mode', '', 'offset_mm', NaN, 'fade_mm', NaN, 'stretch_length_mm', NaN, ...
     'set_on_slice', NaN, 'added_pixels', 0, 'removed_pixels', 0, ...
-    'blocked_pixels', 0, 'area_change_mm2', 0, 'timestamp', '');
+    'blocked_pixels', 0, 'area_change_mm2', 0, 'timestamp', '', ...
+    'accepted_suggestion', false);
 normalized = repmat(template, 0, 1);
 names = fieldnames(template);
 for index = 1:numel(records)

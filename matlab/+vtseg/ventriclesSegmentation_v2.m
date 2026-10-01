@@ -413,12 +413,20 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
         @(~, ~) choose_navigation('jump'));
     jump_button = vtseg.ReviewStyle.button(header, [0.548 0.15 0.050 0.70], 'Go', ...
         @(~, ~) choose_navigation('jump'), 'neutral');
+    suggest_toggle = vtseg.ReviewStyle.toggle(header, [0.606 0.15 0.132 0.70], ...
+        'Suggestions: on', 1, @(~, ~) update_suggest_toggle());
     finish_button = vtseg.ReviewStyle.button(header, [0.745 0.15 0.115 0.70], 'Finish review', ...
         @(~, ~) choose_navigation('finish'), 'neutral');
     quit_button = vtseg.ReviewStyle.button(header, [0.868 0.15 0.122 0.70], 'Quit without saving', ...
         @(~, ~) choose_navigation('quit'), 'danger');
     navigation_controls = [previous_button, next_button, correct_button, ...
-        slice_field, jump_button, finish_button, quit_button];
+        slice_field, jump_button, suggest_toggle, finish_button, quit_button];
+
+    % Grow / shrink changes kept on one slice are offered on the slice next to
+    % it, one slice at a time, and only applied after Accept or Adjust.
+    suggestion_requests = empty_suggestion_requests();
+    declined_slices = [];
+    start_from = [];
 
     k = 1;
 
@@ -433,13 +441,24 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
             Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
 
         set(slice_field, 'String', num2str(k));
-        setappdata(figure_handle, 'vtsegReviewNavigationAction', '');
-        uiwait(figure_handle);
-        if ~isvalid(figure_handle)
-            disp('Review window was closed. Masks will not be saved.');
-            return;
+        action = '';
+        if get(suggest_toggle, 'Value') && ...
+                vtseg.offset_suggestion_applies(suggestion_requests, k, declined_slices)
+            action = offer_suggestion();
+            if ~isvalid(figure_handle)
+                disp('Review window was closed. Masks will not be saved.');
+                return;
+            end
         end
-        action = getappdata(figure_handle, 'vtsegReviewNavigationAction');
+        if isempty(action)
+            setappdata(figure_handle, 'vtsegReviewNavigationAction', '');
+            uiwait(figure_handle);
+            if ~isvalid(figure_handle)
+                disp('Review window was closed. Masks will not be saved.');
+                return;
+            end
+            action = getappdata(figure_handle, 'vtsegReviewNavigationAction');
+        end
 
         if strcmp(action, 'previous')
             k = max(1, k - 1);
@@ -498,19 +517,34 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
             candidate_lepi = lepi;
             candidate_component_actions = empty_component_actions();
             candidate_offset_records = empty_offset_records();
+            candidate_kept_offsets = empty_suggestion_requests();
+            inherited_requests = [];
+            if ~isempty(start_from)
+                % Adjust: the suggestion is the starting point of this Modify;
+                % Discard still restores the slice as it was before it.
+                candidate_Lendo = start_from.masks.Lendo;
+                candidate_Rendo = start_from.masks.Rendo;
+                candidate_Epi = start_from.masks.Epi;
+                candidate_lepi = start_from.masks.lepi;
+                candidate_offset_records = start_from.records;
+                inherited_requests = start_from.changed;
+                start_from = [];
+            end
             correction_valid = false;
             modify_abandoned = false;
             set(navigation_controls, 'Enable', 'off');
 
             while ~correction_valid
                 [candidate_Lendo, candidate_Rendo, candidate_Epi, candidate_lepi, ...
-                    new_component_actions, went_back, new_offset_records] = correct_slice_masks( ...
+                    new_component_actions, went_back, new_offset_records, ...
+                    new_kept_offsets] = correct_slice_masks( ...
                         ax, display_image, k, candidate_Lendo, candidate_Rendo, ...
                         candidate_Epi, candidate_lepi, has_lepi, display_crop, gs_range, ...
                         pixel_spacing, {folder(1:last_segmented_slice).name}, path_image);
                 candidate_component_actions = append_component_actions( ...
                     candidate_component_actions, new_component_actions);
                 candidate_offset_records = [candidate_offset_records; new_offset_records]; %#ok<AGROW>
+                candidate_kept_offsets = [candidate_kept_offsets; new_kept_offsets]; %#ok<AGROW>
 
                 if ~isvalid(figure_handle)
                     disp('Review window was closed. Masks will not be saved.');
@@ -557,12 +591,17 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                         candidate_lepi = backup_lepi;
                         candidate_component_actions = empty_component_actions();
                         candidate_offset_records = empty_offset_records();
+                        candidate_kept_offsets = empty_suggestion_requests();
+                        inherited_requests = [];
                         correction_valid = true;
                     end
                 end
             end
 
             if modify_abandoned
+                if ~isempty(inherited_requests)
+                    declined_slices(end + 1) = k; %#ok<AGROW>
+                end
                 set(navigation_controls, 'Enable', 'on');
                 continue;
             end
@@ -619,18 +658,100 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                 component_actions = append_component_actions( ...
                     component_actions, candidate_component_actions);
                 offset_records = [offset_records; candidate_offset_records]; %#ok<AGROW>
+                suggestion_requests = next_suggestions( ...
+                    suggestion_requests, inherited_requests, candidate_kept_offsets, k);
+                if ~isempty(candidate_kept_offsets)
+                    declined_slices = [];
+                end
                 k = k + 1;
             else
                 Lendo = backup_Lendo;
                 Rendo = backup_Rendo;
                 Epi = backup_Epi;
                 lepi = backup_lepi;
+                if ~isempty(inherited_requests)
+                    declined_slices(end + 1) = k; %#ok<AGROW>
+                end
             end
         end
     end
 
     set(navigation_controls, 'Enable', 'off');
     save_confirmed = confirm_review_save();
+
+    function update_suggest_toggle()
+        if get(suggest_toggle, 'Value')
+            set(suggest_toggle, 'String', 'Suggestions: on');
+        else
+            set(suggest_toggle, 'String', 'Suggestions: off');
+        end
+    end
+
+    function action = offer_suggestion()
+        % Preview the neighbouring slice's kept Grow / shrink on slice k and
+        % ask. Accept applies it here; Adjust returns 'modify' with the
+        % suggestion as the starting point; Skip leaves the slice alone.
+        action = '';
+        spacing_k = editable_pixel_spacing(path_image, folder(k).name);
+        before = struct('Lendo', Lendo, 'Rendo', Rendo, 'Epi', Epi, 'lepi', lepi);
+        [after, details] = vtseg.apply_offset_suggestion(before, suggestion_requests, k, spacing_k);
+        changed = [details.Changed];
+        if ~any(changed)
+            declined_slices(end + 1) = k;
+            return;
+        end
+        source = suggestion_source(suggestion_requests(changed), k);
+        set(navigation_controls, 'Enable', 'off');
+        show_suggestion_preview(ax, display_image, k, before, after, has_lepi, display_crop, ...
+            gs_range, sprintf('Suggested from slice %d: %s', source, ...
+            describe_suggestion(suggestion_requests(changed))));
+        choice = choose_review_action(figure_handle, ...
+            sprintf('Use the change from slice %d here?', source), ...
+            {'Accept', 'accept'; 'Adjust', 'adjust'; 'Skip', 'skip'});
+        if ~isvalid(figure_handle)
+            return;
+        end
+        if strcmp(choice, 'accept')
+            errors = validate_slice_masks(after.Lendo(:, :, k), after.Rendo(:, :, k), ...
+                after.Epi(:, :, k));
+            if ~isempty(errors)
+                fprintf('The suggestion cannot be accepted on slice %d:\n', k);
+                fprintf('  - %s\n', errors{:});
+                choice = choose_review_action(figure_handle, ...
+                    'The suggestion fails the overlap check here', ...
+                    {'Adjust', 'adjust'; 'Skip', 'skip'});
+                if ~isvalid(figure_handle)
+                    return;
+                end
+            end
+        end
+        records = suggestion_records(suggestion_requests(changed), details(changed), k, ...
+            folder(k).name);
+        switch choice
+            case 'accept'
+                Lendo = after.Lendo;
+                Rendo = after.Rendo;
+                Epi = after.Epi;
+                lepi = after.lepi;
+                offset_records = [offset_records; records];
+                suggestion_requests = next_suggestions( ...
+                    suggestion_requests, suggestion_requests(changed), ...
+                    empty_suggestion_requests(), k);
+                fprintf('Slice %d: accepted the change from slice %d.\n', k, source);
+            case 'adjust'
+                start_from = struct('masks', after, 'records', records, ...
+                    'changed', suggestion_requests(changed));
+                action = 'modify';
+            otherwise
+                declined_slices(end + 1) = k;
+        end
+        set(navigation_controls, 'Enable', 'on');
+        if ~strcmp(action, 'modify')
+            [display_image, ~] = show_slice_with_masks( ...
+                ax, path_image, folder(k).name, gs_range, k, ...
+                Lendo, Rendo, Epi, lepi, has_lepi, display_crop);
+        end
+    end
 
     function choose_navigation(action)
         if isvalid(figure_handle)
@@ -677,8 +798,8 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
     end
 end
 
-function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records] = ...
-        correct_slice_masks( ...
+function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records, ...
+        kept_offsets] = correct_slice_masks( ...
         ax, display_image, k, Lendo, Rendo, Epi, lepi, has_lepi, display_crop, gs_range, ...
         pixel_spacing, slice_files, path_image)
 %CORRECT_SLICE_MASKS Prompt for each structure of one slice in order.
@@ -686,10 +807,13 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records]
 % went_back and hands the masks back exactly as they came in. A Grow /
 % shrink over several slices is applied to the other slices here, right
 % after its structure is accepted; offset_records lists every applied
-% offset, one record per structure and slice.
+% offset, one record per structure and slice. kept_offsets describes the
+% same offsets in full-image coordinates so they can be suggested on the
+% neighbouring slice.
 
     component_actions = empty_component_actions();
     offset_records = empty_offset_records();
+    kept_offsets = empty_suggestion_requests();
     went_back = false;
     source_file = slice_files{k};
     slice_count = numel(slice_files);
@@ -723,6 +847,7 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records]
             if index == 1
                 went_back = true;
                 offset_records = empty_offset_records();
+                kept_offsets = empty_suggestion_requests();
                 return;
             end
             index = index - 1;
@@ -743,6 +868,14 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records]
             request = offset_requests(request_index);
             offset_records = [offset_records; offset_record( ...
                 request, field, k, k, source_file, request.CurrentInfo)]; %#ok<AGROW>
+            full_points = [];
+            if strcmp(request.Mode, 'stretch')
+                full_points = request.StretchPoints + ...
+                    [display_crop.columns(1) - 1, display_crop.rows(1) - 1];
+            end
+            kept_offsets = [kept_offsets; suggestion_request(field, request.Mode, ...
+                request.OffsetMm, request.FadeMm, request.StretchLengthMm, full_points, k, ...
+                [k, reshape(request.Slices, 1, [])])]; %#ok<AGROW>
             if ~isempty(request.Slices)
                 spec = [];
                 if strcmp(request.Mode, 'stretch')
@@ -822,11 +955,114 @@ show_multi_slice_comparison(ax, path_image, struct('name', slice_files), ...
     sort([k, slices(:)']), k, masks, after, has_lepi, display_crop, gs_range);
 end
 
+function requests = empty_suggestion_requests()
+requests = struct('Structure', {}, 'Mode', {}, 'OffsetMm', {}, 'FadeMm', {}, ...
+    'StretchLengthMm', {}, 'StretchPoints', {}, 'SourceSlice', {}, 'Covered', {});
+requests = requests(:);
+end
+
+function request = suggestion_request(structure, mode, offset_mm, fade_mm, ...
+        stretch_length_mm, points, source_slice, covered)
+request = struct('Structure', structure, 'Mode', mode, 'OffsetMm', offset_mm, ...
+    'FadeMm', fade_mm, 'StretchLengthMm', stretch_length_mm, 'StretchPoints', points, ...
+    'SourceSlice', source_slice, 'Covered', unique(covered));
+end
+
+function requests = next_suggestions(current, inherited, kept, k)
+%NEXT_SUGGESTIONS Suggestions after slice k is kept. Inherited suggestions
+% that reached k now also cover it; a structure that got a new Grow / shrink
+% here is suggested with that new change instead of the older one.
+requests = current;
+for index = 1:numel(requests)
+    for inherited_index = 1:numel(inherited)
+        if isequal(requests(index), inherited(inherited_index))
+            requests(index).Covered = unique([requests(index).Covered, k]);
+        end
+    end
+end
+if ~isempty(kept)
+    requests = requests(~ismember({requests.Structure}, {kept.Structure}));
+    requests = [requests; kept];
+end
+end
+
+function source = suggestion_source(requests, k)
+% The covered slice next to k that the suggestion comes from.
+covered = unique([requests.Covered]);
+neighbours = covered(abs(covered - k) == 1);
+if isempty(neighbours)
+    source = requests(1).SourceSlice;
+else
+    source = neighbours(1);
+end
+end
+
+function text = describe_suggestion(requests)
+names = struct('Lendo', 'LV endocardium', 'Rendo', 'RV endocardium', ...
+    'Epi', 'Epicardium', 'lepi', 'LV epicardium');
+parts = cell(1, numel(requests));
+for index = 1:numel(requests)
+    request = requests(index);
+    if strcmp(request.Mode, 'stretch')
+        how = sprintf('one stretch, %.0f mm fade', request.FadeMm);
+    else
+        how = 'whole outline';
+    end
+    parts{index} = sprintf('%s %+.1f mm (%s)', names.(request.Structure), request.OffsetMm, how);
+end
+text = strjoin(parts, '; ');
+end
+
+function records = suggestion_records(requests, details, k, source_file)
+% Audit records for a suggestion taken on slice k, marked as accepted
+% suggestions and attributed to the slice where the change was chosen.
+records = empty_offset_records();
+for index = 1:numel(requests)
+    record = offset_record(requests(index), requests(index).Structure, k, ...
+        requests(index).SourceSlice, source_file, details(index));
+    record.accepted_suggestion = true;
+    records = [records; record]; %#ok<AGROW>
+end
+end
+
+function show_suggestion_preview(ax, display_image, k, before, after, has_lepi, ...
+        display_crop, gs_range, title_text)
+%SHOW_SUGGESTION_PREVIEW Slice k as the suggestion would leave it: changed
+% structures solid with the current outline white and dashed on top.
+[display_gs_range, contour_width] = current_review_display_settings(ax, gs_range);
+cla(ax);
+imshow(display_image, display_gs_range, 'Parent', ax);
+hold(ax, 'on');
+fields = {'Lendo', 'Rendo', 'Epi'};
+colors = {'r', 'c', 'g'};
+if has_lepi
+    fields{end + 1} = 'lepi';
+    colors{end + 1} = 'b';
+end
+for index = 1:numel(fields)
+    old = before.(fields{index})(display_crop.rows, display_crop.columns, k);
+    new = after.(fields{index})(display_crop.rows, display_crop.columns, k);
+    plot_mask_contour(ax, new, colors{index}, max(1, contour_width));
+    if ~isequal(old, new)
+        boundaries = bwboundaries(old, 8);
+        for boundary_index = 1:numel(boundaries)
+            boundary = boundaries{boundary_index};
+            plot(ax, boundary(:, 2), boundary(:, 1), 'Color', [1 1 1], ...
+                'LineWidth', 1, 'LineStyle', '--', 'HitTest', 'off');
+        end
+    end
+end
+vtseg.ReviewStyle.axesTitle(ax, [title_text, '. White dashed = now, solid = suggested']);
+apply_review_contour_widths(ancestor(ax, 'figure'), ax);
+drawnow;
+end
+
 function records = empty_offset_records()
 records = struct('slice_number', {}, 'source_dicom_filename', {}, 'structure', {}, ...
     'mode', {}, 'offset_mm', {}, 'fade_mm', {}, 'stretch_length_mm', {}, ...
     'set_on_slice', {}, 'added_pixels', {}, 'removed_pixels', {}, ...
-    'blocked_pixels', {}, 'area_change_mm2', {}, 'timestamp', {});
+    'blocked_pixels', {}, 'area_change_mm2', {}, 'timestamp', {}, ...
+    'accepted_suggestion', {});
 records = records(:);
 end
 
@@ -841,7 +1077,8 @@ record = struct('slice_number', slice_number, 'source_dicom_filename', source_fi
     'fade_mm', request.FadeMm, 'stretch_length_mm', stretch_length, ...
     'set_on_slice', set_on_slice, 'added_pixels', info.AddedPixels, ...
     'removed_pixels', info.RemovedPixels, 'blocked_pixels', info.BlockedPixels, ...
-    'area_change_mm2', info.AreaChangeMm2, 'timestamp', component_timestamp());
+    'area_change_mm2', info.AreaChangeMm2, 'timestamp', component_timestamp(), ...
+    'accepted_suggestion', false);
 end
 
 function reason = skipped_reason(detail)

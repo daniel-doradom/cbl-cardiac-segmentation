@@ -427,6 +427,8 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
     suggestion_requests = empty_suggestion_requests();
     declined_slices = [];
     start_from = [];
+    % +1 or -1: the direction the current suggestion chain is moving in.
+    suggestion_step = 1;
 
     k = 1;
 
@@ -448,6 +450,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
             if ~isvalid(figure_handle)
                 disp('Review window was closed. Masks will not be saved.');
                 return;
+            end
+            if strcmp(action, 'advance')
+                % Accepted: go straight on along the chain, where the next
+                % suggestion, if any, is offered at once.
+                k = min(last_segmented_slice, max(1, k + suggestion_step));
+                continue;
             end
         end
         if isempty(action)
@@ -664,7 +672,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                 if ~isempty(candidate_kept_offsets)
                     declined_slices = [];
                 end
-                k = k + 1;
+                if ~isempty(inherited_requests) && isempty(candidate_kept_offsets)
+                    % Adjusted a suggestion: carry on along its chain.
+                    k = min(last_segmented_slice, max(1, k + suggestion_step));
+                else
+                    k = k + 1;
+                end
             else
                 Lendo = backup_Lendo;
                 Rendo = backup_Rendo;
@@ -702,6 +715,10 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
             return;
         end
         source = suggestion_source(suggestion_requests(changed), k);
+        suggestion_step = sign(k - source);
+        if suggestion_step == 0
+            suggestion_step = 1;
+        end
         set(navigation_controls, 'Enable', 'off');
         show_suggestion_preview(ax, display_image, k, before, after, has_lepi, display_crop, ...
             gs_range, sprintf('Suggested from slice %d: %s', source, ...
@@ -744,6 +761,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                     suggestion_requests, suggestion_requests(changed), ...
                     empty_suggestion_requests(), k);
                 fprintf('Slice %d: accepted the change from slice %d.\n', k, source);
+                action = 'advance';
             case 'adjust'
                 start_from = struct('masks', after, 'records', records, ...
                     'component_records', island_records, ...
@@ -753,7 +771,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                 declined_slices(end + 1) = k;
         end
         set(navigation_controls, 'Enable', 'on');
-        if ~strcmp(action, 'modify')
+        if isempty(action)
             [display_image, ~] = show_slice_with_masks( ...
                 ax, path_image, folder(k).name, gs_range, k, ...
                 Lendo, Rendo, Epi, lepi, has_lepi, display_crop);

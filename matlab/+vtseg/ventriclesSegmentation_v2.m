@@ -527,6 +527,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                 candidate_Epi = start_from.masks.Epi;
                 candidate_lepi = start_from.masks.lepi;
                 candidate_offset_records = start_from.records;
+                candidate_component_actions = start_from.component_records;
                 inherited_requests = start_from.changed;
                 start_from = [];
             end
@@ -694,7 +695,7 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
         action = '';
         spacing_k = editable_pixel_spacing(path_image, folder(k).name);
         before = struct('Lendo', Lendo, 'Rendo', Rendo, 'Epi', Epi, 'lepi', lepi);
-        [after, details] = vtseg.apply_offset_suggestion(before, suggestion_requests, k, spacing_k);
+        [after, details] = vtseg.apply_slice_suggestions(before, suggestion_requests, k, spacing_k);
         changed = [details.Changed];
         if ~any(changed)
             declined_slices(end + 1) = k;
@@ -725,8 +726,12 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                 end
             end
         end
-        records = suggestion_records(suggestion_requests(changed), details(changed), k, ...
-            folder(k).name);
+        is_offset = strcmp({suggestion_requests.Kind}, 'offset')';
+        is_offset = is_offset(:)';
+        records = suggestion_records(suggestion_requests(changed & is_offset), ...
+            [details(changed & is_offset).Info], k, folder(k).name);
+        island_records = island_suggestion_records(suggestion_requests(changed & ~is_offset), ...
+            details(changed & ~is_offset), k, folder(k).name);
         switch choice
             case 'accept'
                 Lendo = after.Lendo;
@@ -734,12 +739,14 @@ function [Lendo, Rendo, Epi, lepi, save_confirmed, component_actions, offset_rec
                 Epi = after.Epi;
                 lepi = after.lepi;
                 offset_records = [offset_records; records];
+                component_actions = append_component_actions(component_actions, island_records);
                 suggestion_requests = next_suggestions( ...
                     suggestion_requests, suggestion_requests(changed), ...
                     empty_suggestion_requests(), k);
                 fprintf('Slice %d: accepted the change from slice %d.\n', k, source);
             case 'adjust'
                 start_from = struct('masks', after, 'records', records, ...
+                    'component_records', island_records, ...
                     'changed', suggestion_requests(changed));
                 action = 'modify';
             otherwise
@@ -859,6 +866,10 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records,
         if ~strcmp(field, 'lepi')
             component_actions = add_component_action( ...
                 component_actions, component_details, k, source_file, field);
+            island_request = island_suggestion_request(field, component_details, k, display_crop);
+            if ~isempty(island_request)
+                kept_offsets = [kept_offsets; island_request]; %#ok<AGROW>
+            end
         end
         if did_update
             masks.(field)(:, :, k) = apply_mask_update( ...
@@ -956,22 +967,66 @@ show_multi_slice_comparison(ax, path_image, struct('name', slice_files), ...
 end
 
 function requests = empty_suggestion_requests()
-requests = struct('Structure', {}, 'Mode', {}, 'OffsetMm', {}, 'FadeMm', {}, ...
-    'StretchLengthMm', {}, 'StretchPoints', {}, 'SourceSlice', {}, 'Covered', {});
+requests = struct('Kind', {}, 'Structure', {}, 'Mode', {}, 'OffsetMm', {}, 'FadeMm', {}, ...
+    'StretchLengthMm', {}, 'StretchPoints', {}, 'SourceSlice', {}, 'Covered', {}, ...
+    'Islands', {});
 requests = requests(:);
 end
 
 function request = suggestion_request(structure, mode, offset_mm, fade_mm, ...
         stretch_length_mm, points, source_slice, covered)
-request = struct('Structure', structure, 'Mode', mode, 'OffsetMm', offset_mm, ...
-    'FadeMm', fade_mm, 'StretchLengthMm', stretch_length_mm, 'StretchPoints', points, ...
-    'SourceSlice', source_slice, 'Covered', unique(covered));
+% A kept Grow / shrink, suggested on the neighbouring slices.
+request = struct('Kind', 'offset', 'Structure', structure, 'Mode', mode, ...
+    'OffsetMm', offset_mm, 'FadeMm', fade_mm, 'StretchLengthMm', stretch_length_mm, ...
+    'StretchPoints', points, 'SourceSlice', source_slice, 'Covered', unique(covered), ...
+    'Islands', []);
+end
+
+function request = island_suggestion_request(structure, details, k, display_crop)
+% A kept Review Islands change, from the rounds of one edit. Keep largest and
+% Fill all holes carry over as rules; other removals and fills carry over as
+% the full-image centres of what was removed or filled. Empty when nothing
+% was removed or filled.
+request = [];
+origin = [display_crop.columns(1) - 1, display_crop.rows(1) - 1];
+islands = struct('KeepLargest', false, 'FillAllHoles', false, ...
+    'RemovedPoints', zeros(0, 2), 'FilledPoints', zeros(0, 2), 'Connectivity', 4);
+changed = false;
+for index = 1:numel(details)
+    detail = details(index);
+    if ~isfield(detail, 'RemovedPoints')
+        continue;
+    end
+    islands.Connectivity = detail.Connectivity;
+    if ~isempty(detail.RemovedPoints)
+        changed = true;
+        if strcmp(detail.Action, 'keep_largest')
+            islands.KeepLargest = true;
+        else
+            islands.RemovedPoints = [islands.RemovedPoints; detail.RemovedPoints + origin];
+        end
+    end
+    if ~isempty(detail.FilledPoints)
+        changed = true;
+        if strcmp(detail.Action, 'fill_all_holes')
+            islands.FillAllHoles = true;
+        else
+            islands.FilledPoints = [islands.FilledPoints; detail.FilledPoints + origin];
+        end
+    end
+end
+if changed
+    request = struct('Kind', 'islands', 'Structure', structure, 'Mode', '', ...
+        'OffsetMm', NaN, 'FadeMm', NaN, 'StretchLengthMm', NaN, 'StretchPoints', [], ...
+        'SourceSlice', k, 'Covered', k, 'Islands', islands);
+end
 end
 
 function requests = next_suggestions(current, inherited, kept, k)
 %NEXT_SUGGESTIONS Suggestions after slice k is kept. Inherited suggestions
 % that reached k now also cover it; a structure that got a new Grow / shrink
-% here is suggested with that new change instead of the older one.
+% or Review Islands change here is suggested with that new change instead of
+% the older one of the same kind.
 requests = current;
 for index = 1:numel(requests)
     for inherited_index = 1:numel(inherited)
@@ -980,8 +1035,12 @@ for index = 1:numel(requests)
         end
     end
 end
-if ~isempty(kept)
-    requests = requests(~ismember({requests.Structure}, {kept.Structure}));
+if ~isempty(kept) && isempty(requests)
+    requests = kept;
+elseif ~isempty(kept)
+    keys = strcat({requests.Structure}, '|', {requests.Kind});
+    kept_keys = strcat({kept.Structure}, '|', {kept.Kind});
+    requests = requests(~ismember(keys, kept_keys));
     requests = [requests; kept];
 end
 end
@@ -1003,6 +1062,11 @@ names = struct('Lendo', 'LV endocardium', 'Rendo', 'RV endocardium', ...
 parts = cell(1, numel(requests));
 for index = 1:numel(requests)
     request = requests(index);
+    if strcmp(request.Kind, 'islands')
+        parts{index} = sprintf('%s %s', names.(request.Structure), ...
+            describe_islands(request.Islands));
+        continue;
+    end
     if strcmp(request.Mode, 'stretch')
         how = sprintf('one stretch, %.0f mm fade', request.FadeMm);
     else
@@ -1011,6 +1075,33 @@ for index = 1:numel(requests)
     parts{index} = sprintf('%s %+.1f mm (%s)', names.(request.Structure), request.OffsetMm, how);
 end
 text = strjoin(parts, '; ');
+end
+
+function text = describe_islands(islands)
+steps = {};
+if islands.KeepLargest
+    steps{end + 1} = 'keep largest piece';
+elseif ~isempty(islands.RemovedPoints)
+    steps{end + 1} = sprintf('remove matching island(s)');
+end
+if islands.FillAllHoles
+    steps{end + 1} = 'fill all holes';
+elseif ~isempty(islands.FilledPoints)
+    steps{end + 1} = sprintf('fill matching hole(s)');
+end
+text = strjoin(steps, ', ');
+end
+
+function records = island_suggestion_records(requests, details, k, source_file)
+% Island audit records for a suggestion taken on slice k, with
+% suggested_from_slice naming the slice the change came from.
+records = empty_component_actions();
+for index = 1:numel(requests)
+    info = details(index).Info;
+    info.Action = 'suggested';
+    info.SuggestedFromSlice = requests(index).SourceSlice;
+    records = add_component_action(records, info, k, source_file, requests(index).Structure);
+end
 end
 
 function records = suggestion_records(requests, details, k, source_file)
@@ -1143,7 +1234,8 @@ actions = struct( ...
     'filled_hole_areas_pixels', {}, ...
     'filled_hole_areas_mm2', {}, ...
     'timestamp', {}, ...
-    'final_component_count', {});
+    'final_component_count', {}, ...
+    'suggested_from_slice', {});
 end
 
 function actions = add_component_action( ...
@@ -1164,7 +1256,11 @@ for detail_index = 1:numel(details)
         'filled_hole_areas_pixels', detail.FilledHoleAreasPixels, ...
         'filled_hole_areas_mm2', detail.FilledHoleAreasMm2, ...
         'timestamp', component_timestamp(), ...
-        'final_component_count', detail.FinalComponentCount);
+        'final_component_count', detail.FinalComponentCount, ...
+        'suggested_from_slice', NaN);
+    if isfield(detail, 'SuggestedFromSlice')
+        record.suggested_from_slice = detail.SuggestedFromSlice;
+    end
     actions(end + 1) = record; %#ok<AGROW>
 end
 end
@@ -1501,7 +1597,19 @@ details = struct( ...
     'RemovedAreasPixels', removed.AreasPixels, ...
     'RemovedAreasMm2', removed.AreasMm2, ...
     'FilledHoleAreasPixels', filled.AreasPixels, ...
-    'FilledHoleAreasMm2', filled.AreasMm2);
+    'FilledHoleAreasMm2', filled.AreasMm2, ...
+    'RemovedPoints', region_centres(removed), ...
+    'FilledPoints', region_centres(filled), ...
+    'Connectivity', connectivity);
+end
+
+function points = region_centres(analysis)
+%REGION_CENTRES [x y] centre of each region, in the analysed image's pixels.
+points = zeros(analysis.Count, 2);
+for index = 1:analysis.Count
+    [rows, columns] = ind2sub(analysis.ImageSize, analysis.PixelIdxList{index});
+    points(index, :) = [mean(columns), mean(rows)];
+end
 end
 
 function show_component_before_after( ...

@@ -603,8 +603,15 @@ the choice applies to:
   replaces the older suggestion. The **Suggestions** switch in the header
   turns them off. Accepted suggestions are marked `accepted_suggestion` in
   `work/mask_offset_audit.json`, with `set_on_slice` naming the slice the
-  change came from. Only Grow / shrink changes are suggested; handle drags
-  and Review Islands changes are not.
+  change came from. Review Islands changes are suggested the same way:
+  **Keep largest** and **Fill all holes** carry over as rules, while a removed
+  island or filled hole carries over by position, moved with the LV centre,
+  and picks the nearest island or hole within 10 mm on the new slice (none,
+  if nothing is that close). The largest piece is never removed, and a
+  structure can carry a Grow / shrink and an island suggestion together,
+  the Grow / shrink applied first. Accepted island suggestions appear in
+  `work/component_review_audit.json` with action `suggested` and
+  `suggested_from_slice`. Handle drags are not suggested.
 - `redraw` discards that structure on the slice and draws one or more new
   components from scratch.
 - `clear` removes that structure from the slice.

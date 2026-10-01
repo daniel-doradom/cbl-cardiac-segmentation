@@ -866,7 +866,7 @@ function [Lendo, Rendo, Epi, lepi, component_actions, went_back, offset_records,
         if ~strcmp(field, 'lepi')
             component_actions = add_component_action( ...
                 component_actions, component_details, k, source_file, field);
-            island_request = island_suggestion_request(field, component_details, k, display_crop);
+            island_request = island_suggestion_request(field, component_details, k);
             if ~isempty(island_request)
                 kept_offsets = [kept_offsets; island_request]; %#ok<AGROW>
             end
@@ -982,40 +982,28 @@ request = struct('Kind', 'offset', 'Structure', structure, 'Mode', mode, ...
     'Islands', []);
 end
 
-function request = island_suggestion_request(structure, details, k, display_crop)
-% A kept Review Islands change, from the rounds of one edit. Keep largest and
-% Fill all holes carry over as rules; other removals and fills carry over as
-% the full-image centres of what was removed or filled. Empty when nothing
-% was removed or filled.
+function request = island_suggestion_request(structure, details, k)
+% A kept Review Islands change, from the rounds of one edit. Only the two
+% rules are suggested: Keep largest when a round removed pieces with it, and
+% Fill all holes when a round filled holes with it. Removing or filling one
+% chosen island or hole is not suggested. Empty when neither rule was used.
 request = [];
-origin = [display_crop.columns(1) - 1, display_crop.rows(1) - 1];
-islands = struct('KeepLargest', false, 'FillAllHoles', false, ...
-    'RemovedPoints', zeros(0, 2), 'FilledPoints', zeros(0, 2), 'Connectivity', 4);
-changed = false;
+islands = struct('KeepLargest', false, 'FillAllHoles', false, 'Connectivity', 4);
 for index = 1:numel(details)
     detail = details(index);
-    if ~isfield(detail, 'RemovedPoints')
+    if ~isfield(detail, 'Connectivity')
         continue;
     end
-    islands.Connectivity = detail.Connectivity;
-    if ~isempty(detail.RemovedPoints)
-        changed = true;
-        if strcmp(detail.Action, 'keep_largest')
-            islands.KeepLargest = true;
-        else
-            islands.RemovedPoints = [islands.RemovedPoints; detail.RemovedPoints + origin];
-        end
+    if strcmp(detail.Action, 'keep_largest') && ~isempty(detail.RemovedAreasPixels)
+        islands.KeepLargest = true;
+        islands.Connectivity = detail.Connectivity;
     end
-    if ~isempty(detail.FilledPoints)
-        changed = true;
-        if strcmp(detail.Action, 'fill_all_holes')
-            islands.FillAllHoles = true;
-        else
-            islands.FilledPoints = [islands.FilledPoints; detail.FilledPoints + origin];
-        end
+    if strcmp(detail.Action, 'fill_all_holes') && ~isempty(detail.FilledHoleAreasPixels)
+        islands.FillAllHoles = true;
+        islands.Connectivity = detail.Connectivity;
     end
 end
-if changed
+if islands.KeepLargest || islands.FillAllHoles
     request = struct('Kind', 'islands', 'Structure', structure, 'Mode', '', ...
         'OffsetMm', NaN, 'FadeMm', NaN, 'StretchLengthMm', NaN, 'StretchPoints', [], ...
         'SourceSlice', k, 'Covered', k, 'Islands', islands);
@@ -1030,7 +1018,8 @@ function requests = next_suggestions(current, inherited, kept, k)
 requests = current;
 for index = 1:numel(requests)
     for inherited_index = 1:numel(inherited)
-        if isequal(requests(index), inherited(inherited_index))
+        % isequaln: unused numeric fields hold NaN, which isequal never matches.
+        if isequaln(requests(index), inherited(inherited_index))
             requests(index).Covered = unique([requests(index).Covered, k]);
         end
     end
@@ -1081,13 +1070,9 @@ function text = describe_islands(islands)
 steps = {};
 if islands.KeepLargest
     steps{end + 1} = 'keep largest piece';
-elseif ~isempty(islands.RemovedPoints)
-    steps{end + 1} = sprintf('remove matching island(s)');
 end
 if islands.FillAllHoles
     steps{end + 1} = 'fill all holes';
-elseif ~isempty(islands.FilledPoints)
-    steps{end + 1} = sprintf('fill matching hole(s)');
 end
 text = strjoin(steps, ', ');
 end
@@ -1598,18 +1583,7 @@ details = struct( ...
     'RemovedAreasMm2', removed.AreasMm2, ...
     'FilledHoleAreasPixels', filled.AreasPixels, ...
     'FilledHoleAreasMm2', filled.AreasMm2, ...
-    'RemovedPoints', region_centres(removed), ...
-    'FilledPoints', region_centres(filled), ...
     'Connectivity', connectivity);
-end
-
-function points = region_centres(analysis)
-%REGION_CENTRES [x y] centre of each region, in the analysed image's pixels.
-points = zeros(analysis.Count, 2);
-for index = 1:analysis.Count
-    [rows, columns] = ind2sub(analysis.ImageSize, analysis.PixelIdxList{index});
-    points(index, :) = [mean(columns), mean(rows)];
-end
 end
 
 function show_component_before_after( ...

@@ -1,6 +1,6 @@
 # Start here
 
-A short guide to this repo. The full details are in
+A short guide to this repo for lab members. The full details are in
 [`docs/manual-workflow.md`](docs/manual-workflow.md); this page tells you what
 exists, what to install, and in which order things run.
 
@@ -27,7 +27,7 @@ VT/ECGI work, with as little hand segmentation as possible.
 | This repo | clone `main` | everything |
 | `bivme311` conda env | see `docs/bivme-backend.md` | MRI, LGE alignment, tests |
 | biv-me checkout and models | `.backends/biv-me` | MRI |
-| `vtseg-ct121` conda env with `pip install -e '.[ct]'` | see `README.md` | CT |
+| `vtseg-ct121` conda env with `pip install -e '.[ct]'` | see `docs/usage.md` | CT |
 | TotalSegmentator license | `totalseg_set_license` | CT |
 | MATLAB, Image Processing and Statistics toolboxes | your machine | correction and meshing |
 | iso2mesh | `.external/iso2mesh` | meshing |

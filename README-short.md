@@ -63,7 +63,7 @@ In MATLAB, one case looks like this:
 
 ```matlab
 clear classes; clear functions; rehash
-repoRoot = '/path/to/vt-segmentation-eval';
+repoRoot = '/path/to/cbl-cardiac-segmentation';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg('Iso2meshPath', fullfile(repoRoot, '.external', 'iso2mesh'));
 vtseg.main_ct_tetmesh('/path/to/results/best/<case>-ct/manual/<export>', []);

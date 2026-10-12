@@ -25,7 +25,7 @@ clear classes
 clear functions
 rehash
 
-repoRoot = '/path/to/vt-segmentation-eval';
+repoRoot = '/path/to/cbl-cardiac-segmentation';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg(); % Finds <repo>/.external/iso2mesh when installed there.
 

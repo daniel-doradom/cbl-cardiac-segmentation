@@ -1,4 +1,4 @@
-# VT Segmentation Evaluation
+# CBL Cardiac Segmentation
 
 Automatic heart segmentation from cardiac MRI and CT, turned into
 biventricular tetrahedral meshes for ventricular tachycardia (VT) and
@@ -53,8 +53,8 @@ use. It never modifies the source DICOM data.
 ## Quick start
 
 ```bash
-git clone https://github.com/daniel-doradom/vt-segmentation-eval.git
-cd vt-segmentation-eval
+git clone https://github.com/daniel-doradom/cbl-cardiac-segmentation.git
+cd cbl-cardiac-segmentation
 pip install -e '.[dev,registration]'   # add ,ct for TotalSegmentator
 python -m vtseg --help                 # lists every pipeline step
 python -m pytest -q                    # Python tests
@@ -101,11 +101,11 @@ by this license.
 ## Citation
 
 ```bibtex
-@software{dorado_vt_segmentation_eval,
+@software{dorado_cbl_cardiac_segmentation,
   author = {Dorado, Daniel},
-  title  = {{VT Segmentation Evaluation}: automatic cardiac MRI and CT
+  title  = {{CBL Cardiac Segmentation}: automatic cardiac MRI and CT
             segmentation for VT/ECGI meshing},
   year   = {2026},
-  url    = {https://github.com/daniel-doradom/vt-segmentation-eval}
+  url    = {https://github.com/daniel-doradom/cbl-cardiac-segmentation}
 }
 ```

@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "vt-segmentation-eval"
+name = "cbl-cardiac-segmentation"
 version = "0.1.0"
 description = "Experimental modality-aware cardiac segmentation evaluation pipeline"
 readme = "README.md"

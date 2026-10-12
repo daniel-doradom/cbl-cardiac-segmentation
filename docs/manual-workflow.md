@@ -59,7 +59,7 @@ cp /tmp/unison-2.53.8-ubuntu-22.04-x86_64-static/bin/unison* ~/.local/bin/
 talks to 2.53.8), then create `~/.unison/vtseg-results.prf`:
 
 ```
-root = /path/to/vt-segmentation-eval/results
+root = /path/to/cbl-cardiac-segmentation/results
 root = ssh://USER@LAB_HOST//home/USER/VT/vt-segmentation-eval/results
 servercmd = /home/USER/.local/bin/unison
 fastcheck = true
@@ -474,7 +474,7 @@ clear classes
 clear functions
 rehash
 
-repoRoot = '/path/to/vt-segmentation-eval';
+repoRoot = '/path/to/cbl-cardiac-segmentation';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg();
 
@@ -809,7 +809,7 @@ explicit later decision.
 On the workstation run:
 
 ```matlab
-repoRoot = '/path/to/vt-segmentation-eval';
+repoRoot = '/path/to/cbl-cardiac-segmentation';
 addpath(fullfile(repoRoot, 'matlab'));
 setup_vtseg();
 caseDirectory = fullfile(repoRoot, 'results', 'best', 'nsha04-ct', ...

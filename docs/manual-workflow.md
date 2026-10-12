@@ -99,15 +99,12 @@ EOF
 systemctl --user daemon-reload && systemctl --user enable --now unison-vtseg.timer
 ```
 
-`systemctl --user list-timers unison-vtseg.timer` shows the next run;
-`journalctl --user -u unison-vtseg` shows what each run did. `-batch` copies
-everything unambiguous and leaves a conflict for an interactive run.
+**On the laptop (locally):**
 
-To run bysync manually:
-
-```bash
-systemctl --user start unison-vtseg.service && journalctl --user -u unison-vtseg -n 20 --no-pager
-```
+- `systemctl --user list-timers unison-vtseg.timer` shows the next run;
+- `journalctl --user -u unison-vtseg` shows what each run did. `-batch` copies
+  everything unambiguous and leaves a conflict for an interactive run.
+- **To run a sync manually:** `systemctl --user start unison-vtseg.service && journalctl --user -u unison-vtseg -n 20 --no-pager`
 
 Conflicts should not arise: the server writes a MATLAB export only once, into
 `work/` and a read-only `original/` (see step 4), and MATLAB writes only into

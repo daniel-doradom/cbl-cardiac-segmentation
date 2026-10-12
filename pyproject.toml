@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "Experimental modality-aware cardiac segmentation evaluation pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "Research use; see LICENSE"}
-authors = [{name = "VT segmentation evaluation contributors"}]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Daniel Dorado"}]
 dependencies = [
   "nibabel>=5.2",
   "numpy>=1.26",
